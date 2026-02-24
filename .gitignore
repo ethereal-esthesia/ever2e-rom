@@ -1,0 +1,10 @@
+# OS/editor
+.DS_Store
+.vscode/
+
+# Common outputs
+build/
+dist/
+
+# Logs
+*.log
