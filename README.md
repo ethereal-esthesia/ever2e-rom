@@ -17,67 +17,106 @@
   - Keep ROM mapped at reset/boot, then flip to RAM overlays where safe for performance and feature growth.
 
 ## 3. Memory layout (proposed)
-- `$D000-$E7FF`: BASIC core/interpreter
-- `$E800-$EFFF`: DOS command stub + disk API trampoline
-- `$F000-$F7FF`: Monitor core (disassembler, examine/store, mini-assembler)
-- `$F800-$FFF3`: reset/autostart, common I/O glue, jump table
-- `$FFF4-$FFF9`: reserved
-- `$FFFA-$FFFF`: vectors
-  - `NMI` at `$FFFA/$FFFB`
-  - `RESET` at `$FFFC/$FFFD`
-  - `IRQ/BRK` at `$FFFE/$FFFF`
+| Range | Purpose |
+|---|---|
+| `$D000-$E7FF` | BASIC core/interpreter |
+| `$E800-$EFFF` | DOS command stub + disk API trampoline |
+| `$F000-$F7FF` | Monitor core (disassembler, examine/store, mini-assembler) |
+| `$F800-$FFF3` | reset/autostart, common I/O glue, jump table |
+| `$FFF4-$FFF9` | reserved |
+| `$FFFA-$FFFF` | vectors (see table below) |
+
+| Vector | Address bytes |
+|---|---|
+| `NMI` | `$FFFA/$FFFB` |
+| `RESET` | `$FFFC/$FFFD` |
+| `IRQ/BRK` | `$FFFE/$FFFF` |
 
 ## 4. Hardware address map (IIe/Platinum baseline)
-- Main memory:
-  - `$0000-$00FF`: zero page
-  - `$0100-$01FF`: hardware stack
-  - `$0200-$03FF`: general RAM
-  - `$0400-$07FF`: text/lores page 1
-  - `$0800-$0BFF`: text/lores page 2
-  - `$0C00-$1FFF`: general RAM
-  - `$2000-$3FFF`: hi-res page 1
-  - `$4000-$5FFF`: hi-res page 2
-  - `$6000-$BFFF`: general RAM
-- I/O and firmware windows:
-  - `$C000-$C0FF`: soft-switch/I/O space
-  - `$C100-$C2FF`, `$C400-$C7FF`: slot ROM (`$CnXX`) or internal ROM (via `INTCXROM`)
-  - `$C300-$C3FF`: slot 3/internal ROM control window (`SLOTC3ROM`/`INTC8ROM` interactions)
-  - `$C800-$CFFF`: expansion ROM window or internal ROM (`INTC8ROM`/`INTCXROM` dependent)
-  - `$D000-$FFFF`: upper ROM / language-card banked RAM region
-- Core soft switches and status (relevant to ROM work):
-  - `$C000`: keyboard data / key strobe
-  - `$C010`: clear/read keyboard strobe
-  - `$C001`: set `80STORE`
-  - `$C002/$C003`: clear/set `RAMRD`
-  - `$C004/$C005`: clear/set `RAMWRT`
-  - `$C006/$C007`: clear/set `INTCXROM`
-  - `$C008/$C009`: clear/set `ALTZP`
-  - `$C00A/$C00B`: clear/set `SLOTC3ROM`
-  - `$C00C/$C00D`: clear/set `80COL`
-  - `$C00E/$C00F`: clear/set `ALTCHARSET`
-  - `$C011-$C01F`: switch status reads (`BANK1`, `HRAMRD`, `RAMRD`, `RAMWRT`, `INTCXROM`, `ALTZP`, `SLOTC3ROM`, `80STORE`, `VBL`, `TEXT`, `MIXED`, `PAGE2`, `HIRES`, `ALTCHARSET`, `80COL`)
-  - `$C019`: vertical blank status (`VBL`) in bit 7
-  - `$C030`: speaker toggle
-  - `$C050/$C051`: graphics/text mode
-  - `$C052/$C053`: mixed/full mode
-  - `$C054/$C055`: page2/page1 select
-  - `$C056/$C057`: lores/hires select
-  - `$C058-$C05F`: annunciators 0-3 clear/set
-  - `$C061/$C069`: open-apple / PB0
-  - `$C062/$C06A`: closed-apple (option) / PB1
-  - `$C063/$C06B`: shift / PB2
-  - `$C070`: paddle timer strobe
-  - `$C080-$C08F`: language-card/banked-RAM control soft switches
-  - `$CFFF`: clear `INTC8ROM` latch (returns expansion window routing to default behavior)
-- CPU vectors (valid for 6502 and 65C02):
-  - `$FFFA/$FFFB`: `NMI`
-  - `$FFFC/$FFFD`: `RESET`
-  - `$FFFE/$FFFF`: `IRQ/BRK`
+| Main memory range | Meaning |
+|---|---|
+| `$0000-$00FF` | zero page |
+| `$0100-$01FF` | hardware stack |
+| `$0200-$03FF` | general RAM |
+| `$0400-$07FF` | text/lores page 1 |
+| `$0800-$0BFF` | text/lores page 2 |
+| `$0C00-$1FFF` | general RAM |
+| `$2000-$3FFF` | hi-res page 1 |
+| `$4000-$5FFF` | hi-res page 2 |
+| `$6000-$BFFF` | general RAM |
+
+| I/O / firmware window | Meaning |
+|---|---|
+| `$C000-$C0FF` | soft-switch/I/O space |
+| `$C100-$C2FF`, `$C400-$C7FF` | slot ROM (`$CnXX`) or internal ROM (via `INTCXROM`) |
+| `$C300-$C3FF` | slot 3/internal ROM control window (`SLOTC3ROM`/`INTC8ROM` interactions) |
+| `$C800-$CFFF` | expansion ROM window or internal ROM (`INTC8ROM`/`INTCXROM` dependent) |
+| `$D000-$FFFF` | upper ROM / language-card banked RAM region |
+
+| Soft switch / status | Function |
+|---|---|
+| `$C000` | keyboard data / key strobe |
+| `$C010` | clear/read keyboard strobe |
+| `$C001` | set `80STORE` |
+| `$C002/$C003` | clear/set `RAMRD` |
+| `$C004/$C005` | clear/set `RAMWRT` |
+| `$C006/$C007` | clear/set `INTCXROM` |
+| `$C008/$C009` | clear/set `ALTZP` |
+| `$C00A/$C00B` | clear/set `SLOTC3ROM` |
+| `$C00C/$C00D` | clear/set `80COL` |
+| `$C00E/$C00F` | clear/set `ALTCHARSET` |
+| `$C011-$C01F` | switch status reads (`BANK1`, `HRAMRD`, `RAMRD`, `RAMWRT`, `INTCXROM`, `ALTZP`, `SLOTC3ROM`, `80STORE`, `VBL`, `TEXT`, `MIXED`, `PAGE2`, `HIRES`, `ALTCHARSET`, `80COL`) |
+| `$C019` | vertical blank status (`VBL`) in bit 7 |
+| `$C030` | speaker toggle |
+| `$C050/$C051` | graphics/text mode |
+| `$C052/$C053` | mixed/full mode |
+| `$C054/$C055` | page2/page1 select |
+| `$C056/$C057` | lores/hires select |
+| `$C058-$C05F` | annunciators 0-3 clear/set |
+| `$C061/$C069` | open-apple / PB0 |
+| `$C062/$C06A` | closed-apple (option) / PB1 |
+| `$C063/$C06B` | shift / PB2 |
+| `$C070` | paddle timer strobe |
+| `$C080-$C08F` | language-card/banked-RAM control soft switches |
+| `$CFFF` | clear `INTC8ROM` latch (returns expansion window routing to default behavior) |
+
+| CPU vector (6502 + 65C02) | Address bytes |
+|---|---|
+| `NMI` | `$FFFA/$FFFB` |
+| `RESET` | `$FFFC/$FFFD` |
+| `IRQ/BRK` | `$FFFE/$FFFF` |
+
+### Switchable Spaces Matrix
+| Space | Address range | What switches | Primary soft-switches | Control addresses | Notes |
+|---|---|---|---|---|---|
+| Zero page + stack | `$0000-$01FF` | Main vs auxiliary bank | `ALTZP` | `C008` (clear) / `C009` (set) | Switches both ZP and stack together |
+| General RAM (most lower memory) | `$0200-$03FF`, `$0800-$1FFF`, `$4000-$BFFF` | Main vs auxiliary read/write | `RAMRD`, `RAMWRT` | `C002/C003` (`RAMRD`), `C004/C005` (`RAMWRT`) | Read and write routing are independent |
+| Text/Lores page region | `$0400-$07FF` | With `80STORE` on, `PAGE2` selects display page bank; otherwise `RAMRD/RAMWRT` rules | `80STORE`, `PAGE2` (+ `RAMRD/RAMWRT` fallback) | `C001` (set `80STORE`), `C054/C055` (`PAGE2`) | Special-cased by `80STORE` behavior |
+| Hires page region | `$2000-$3FFF` | With `80STORE` and `HIRES` on, `PAGE2` selects bank; otherwise `RAMRD/RAMWRT` rules | `80STORE`, `HIRES`, `PAGE2` (+ `RAMRD/RAMWRT` fallback) | `C001` (`80STORE`), `C056/C057` (`HIRES`), `C054/C055` (`PAGE2`) | Special-cased by `80STORE+HIRES` behavior |
+| Slot ROM window | `$C100-$C2FF`, `$C400-$C7FF` | Internal ROM vs slot card ROM | `INTCXROM` | `C006` (clear) / `C007` (set) | Set `INTCXROM` to force internal ROM in `CNXX` |
+| Slot 3 control window | `$C300-$C3FF` | Internal ROM vs slot 3 ROM plus C8 latch behavior | `INTCXROM`, `SLOTC3ROM`, `INTC8ROM` latch | `C00A/C00B` (`SLOTC3ROM`), `C006/C007` (`INTCXROM`) | Access to `C3XX` can set `INTC8ROM` latch when `SLOTC3ROM` is clear |
+| Expansion ROM window | `$C800-$CFFF` | Internal ROM vs expansion/card ROM | `INTC8ROM` latch + `INTCXROM` | `CFFF` clears `INTC8ROM`; latch set via `C3XX` path | Routing depends on C8 latch state |
+| Upper firmware banked area | `$D000-$DFFF` | ROM vs banked RAM and bank select | `HRAMRD`, `HRAMWRT`, `BANK1` (+ `ALTZP` backing) | `C080-C08F` language-card controls | Classic language-card bank-switching region |
+| Upper firmware fixed area | `$E000-$FFFF` | ROM vs overlay RAM | `HRAMRD`, `HRAMWRT` (+ `ALTZP` backing) | `C080-C08F` language-card controls | Not bank-split like `$D000-$DFFF` in common IIe behavior |
+| Language-card control group | `$C080-$C08F` | Select bank/read/write-latch state for upper memory | `HRAMRD`, `HRAMWRT`, `BANK1`, `PREWRITE` | `C080-C08F` | Access pattern controls whether upper region is readable/writable RAM vs ROM |
+| Video mode page routing | `$0400-$07FF`, `$2000-$3FFF` | Displayed page selection | `PAGE2` (+ `80STORE` and `HIRES` interactions) | `C054/C055` (`PAGE2`) | Affects which page is active for display/page-mapped accesses |
+
+### Language Card `$C080-$C08F` Detail
+| Soft-switch | Also alias | Effect on `BANK1` | Effect on `HRAMRD` | Effect on `PREWRITE` | Effect on `HRAMWRT` | Practical meaning |
+|---|---|---|---|---|---|---|
+| `C080` | `C084` | Clear (bank2) | Set | Clear | Clear | Read bank2 RAM in `$D000-$DFFF`; writes disabled |
+| `C081` | `C085` | Clear (bank2) | Clear | Set on first access; if already set then enable write | Latches write-enable sequence | ROM read path for upper area unless `HRAMRD` is re-enabled; part of write-unlock sequence |
+| `C082` | `C086` | Clear (bank2) | Clear | Clear | Clear | ROM read path; writes disabled |
+| `C083` | `C087` | Clear (bank2) | Set | Set on first access; if already set then enable write | Latches write-enable sequence | Read bank2 RAM with write-unlock sequencing |
+| `C088` | `C08C` | Set (bank1) | Set | Clear | Clear | Read bank1 RAM in `$D000-$DFFF`; writes disabled |
+| `C089` | `C08D` | Set (bank1) | Clear | Set on first access; if already set then enable write | Latches write-enable sequence | ROM read path with bank1 selected for subsequent write-enable |
+| `C08A` | `C08E` | Set (bank1) | Clear | Clear | Clear | ROM read path; writes disabled (bank1 selected) |
+| `C08B` | `C08F` | Set (bank1) | Set | Set on first access; if already set then enable write | Latches write-enable sequence | Read bank1 RAM with write-unlock sequencing |
 
 ## 5. Boot behavior
 - Cold reset:
   - Init hardware state, soft switches, stack, zero page workspace
-  - Print banner (`APPLE IIE PLATINUM 65C02`)
+  - Print banner (`Ever2e Platinum`)
   - Attempt slot-6 boot first (DOS disk)
   - If boot fails, enter BASIC prompt (`]`)
 - Warm reset (`Ctrl-Reset`):
