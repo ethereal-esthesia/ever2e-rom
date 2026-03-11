@@ -1,5 +1,5 @@
 machine.layout=APPLE_IIE
-binary.file=../ROMS/APPLE2E_EVER2E_BOOTLOOP.ROM
+binary.file=../ROMS/EVER2E.ROM
 address.start=0xC000
 
 machine.cpu.mult=1

@@ -156,3 +156,26 @@
 - With DOS disk inserted, auto-boot to DOS-loaded environment
 - DOS stub commands can `CATALOG` and `LOAD` a BASIC file
 - Warm reset returns cleanly without corrupting low memory state
+
+## 11. Assembly workflow (G65SC02-friendly)
+This repo is wired for a fast `ca65/ld65` loop targeting Apple IIe 16KB ROM images.
+
+### Prereqs
+- `ca65` + `ld65` from `cc65` (for example: `brew install cc65`)
+
+### Layout
+- Source: `asm/main.s`
+- Linker config: `cfg/apple2e_rom16k.cfg`
+- ROM output: `ROMS/EVER2E.ROM`
+- Checksum output: `ROMS/checksum.txt` (MAME internal hash format)
+- Build artifacts: `build/`
+
+### Commands
+- Build ROM: `make build`
+- Run in JVM emulator: `make run`
+- Run with extra emulator args: `make run ARGS="--start-fullscreen --no-sound"`
+- Clean intermediates: `make clean`
+
+### Notes
+- Source uses `.setcpu "65C02"` which is compatible with G65SC02 opcode usage.
+- Vector table is emitted at `$FFFA-$FFFF` by the linker config.

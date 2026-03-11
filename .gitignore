@@ -5,6 +5,7 @@
 # Common outputs
 build/
 dist/
+nvram/
 
 # Logs
 *.log
