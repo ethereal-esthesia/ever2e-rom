@@ -39,7 +39,7 @@ $(OUT_DIR):
 $(ROM_DIR):
 	mkdir -p $(ROM_DIR)
 
-$(OUT_DIR)/%.o: $(ROOT)asm/%.asm | $(OUT_DIR)
+$(OUT_DIR)/%.o: $(ROOT)asm/%.asm $(wildcard $(ROOT)asm/*.inc) | $(OUT_DIR)
 	$(CA65) -t none -g -o $@ $<
 
 $(ROM): $(OBJ) $(CFG) | $(ROM_DIR)

@@ -3,9 +3,8 @@
 ; tone_play
 ; Args:
 ;   A = duration outer count (0 => no sound)
-;   X = frequency delay count (0 => longest delay)
 ; Clobbers:
-;   A, X, Y, flags
+;   A, Y, flags
 ; Returns:
 ;   RTS
 ; Notes:
@@ -29,11 +28,6 @@ tone_play:
     ldy #$10
 @inner:
     bit $C030           ; speaker toggle #1
-    bit $C030           ; speaker toggle #2
-    txa                 ; reload per-tick delay count
-@freq_delay:
-    dea
-    bne @freq_delay
     dey
     bne @inner
 

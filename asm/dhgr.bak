@@ -1,0 +1,288 @@
+; Double-hires helpers.
+;
+; dhgr_display
+; Args:      A = page (1 or 2)
+; Clobbers:  A, flags
+; Returns:   RTS
+; Notes:
+; - Enables graphics/full/hires and DHGR-related switches.
+; - Selects display page 1/2.
+;
+; dhgr_plot
+; Args:      A = color (low nibble 0-15), X = x (0-79), Y = y (0-191)
+;            C clear => page 1, C set => page 2
+; Clobbers:  A, X, Y, flags, $00-$05 (ZP scratch), RAMRD/RAMWRT soft-switches
+; Returns:   RTS
+; Notes:
+; - Uses x/7 and x%7 phase math to place a 4-bit color nibble in DHGR bitstream.
+; - Performs read-modify-write; crossing phases update two adjacent stream bytes.
+; - Restores RAMRD/RAMWRT to main-RAM before returning.
+;
+; Convenience wrappers:
+; - dhgr_plot_page1: same args as dhgr_plot, forced page 1
+; - dhgr_plot_page2: same args as dhgr_plot, forced page 2
+
+.setcpu "65C02"
+
+.export dhgr_display
+.export dhgr_plot
+.export dhgr_plot_page1
+.export dhgr_plot_page2
+.export div7_u8
+
+; div7_u8
+; Args:      A = unsigned dividend (0-255)
+; Clobbers:  A, X, Y, flags
+; Returns:   A = quotient (A / 7), Y = remainder (A % 7)
+div7_u8:
+    ldx #$00
+@div_loop:
+    cmp #$07
+    bcc @div_done
+    sec
+    sbc #$07
+    inx
+    bne @div_loop
+@div_done:
+    tay
+    txa
+    rts
+
+dhgr_display:
+    ; Match known-good DHGR soft-switch sequence, with page selectable.
+    ; A carries page selector (1 => page 1, 2 => page 2); data value ignored.
+    bit $C000           ; 80STORE off (read side effect on this target)
+    bit $C057           ; hires on
+    bit $C05E           ; AN3 clear
+    bit $C052           ; mixed off (full graphics)
+    bit $C00D           ; 80COL on
+
+    cmp #$02
+    beq @page2
+    bit $C054           ; page 1
+    jmp @done
+@page2:
+    bit $C055           ; page 2
+@done:
+    bit $C050           ; graphics on
+    rts
+
+dhgr_plot_page1:
+    clc
+    jmp dhgr_plot
+
+dhgr_plot_page2:
+    sec
+    jmp dhgr_plot
+
+dhgr_plot:
+    phx                 ; preserve caller's X while deriving row address
+
+    ; Save color nibble.
+    and #$0F
+    sta $03
+
+    ; Base page address ($2000 or $4000).
+    lda #$00
+    sta $00
+    bcc @base_page1
+    lda #$40
+    bcs @base_done
+@base_page1:
+    lda #$20
+@base_done:
+    sta $01
+
+    ; + (y & 7) * $400
+    tya
+    and #$07
+    asl a
+    asl a
+    clc
+    adc $01
+    sta $01
+
+    ; + (y & $38) * $10
+    tya
+    and #$38
+    tax
+    txa
+    asl a
+    asl a
+    asl a
+    asl a
+    clc
+    adc $00
+    sta $00
+    bcc @no_carry_1
+    inc $01
+@no_carry_1:
+    txa
+    lsr a
+    lsr a
+    lsr a
+    lsr a
+    clc
+    adc $01
+    sta $01
+
+    ; + (y >> 6) * $28
+    tya
+    lsr a
+    lsr a
+    lsr a
+    lsr a
+    lsr a
+    lsr a
+    tax
+    lda dhgr_y_group_lo,x
+    clc
+    adc $00
+    sta $00
+    lda dhgr_y_group_hi,x
+    adc $01
+    sta $01
+
+    plx                 ; restore X = x pixel column
+
+    ; Compute group/phase from x: q = x/7, r = x%7.
+    txa
+    jsr div7_u8
+    asl a               ; group base byte offset = q * 2
+    sta $02
+    sty $04             ; phase 0..6
+
+    ; First stream byte update.
+    ldx $04
+    lda dhgr_phase_stream_idx,x
+    tax
+    jsr dhgr_load_stream_byte
+    sta $05
+
+    ldx $04
+    lda dhgr_phase_keep_mask,x
+    and $05
+    sta $05
+
+    lda $03
+    ldx $04
+    ldy dhgr_phase_shift_left,x
+@shift_first:
+    cpy #$00
+    beq @shift_first_done
+    asl a
+    dey
+    jmp @shift_first
+@shift_first_done:
+    and #$7F
+    ora $05
+    sta $05
+
+    ldx $04
+    lda dhgr_phase_stream_idx,x
+    tax
+    jsr dhgr_store_stream_byte
+
+    ; Crossing phases (1,3,5) update a second byte.
+    ldx $04
+    lda dhgr_phase_crosses,x
+    beq @plot_done
+
+    lda $03
+    ldx $04
+    ldy dhgr_phase_shift_right,x
+@shift_second:
+    cpy #$00
+    beq @shift_second_done
+    lsr a
+    dey
+    jmp @shift_second
+@shift_second_done:
+    and dhgr_phase_second_value_mask,x
+    sta $05
+
+    ldx $04
+    lda dhgr_phase_stream_idx,x
+    clc
+    adc #$01
+    tax
+    jsr dhgr_load_stream_byte
+
+    ldx $04
+    and dhgr_phase_second_keep_mask,x
+    ora $05
+    sta $05
+
+    ldx $04
+    lda dhgr_phase_stream_idx,x
+    clc
+    adc #$01
+    tax
+    jsr dhgr_store_stream_byte
+
+@plot_done:
+    bit $C002           ; RAMRD -> main
+    bit $C004           ; RAMWRT -> main
+    rts
+
+; Load stream byte index X (0..3) from row base ($00/$01) and group base ($02).
+; Returns A = byte (7-bit payload in low bits).
+dhgr_load_stream_byte:
+    txa
+    lsr a               ; +0 for idx 0/1, +1 for idx 2/3
+    clc
+    adc $02
+    tay
+    txa
+    and #$01
+    bne @load_main
+    bit $C003           ; RAMRD -> auxiliary
+    lda ($00),y
+    bit $C002           ; RAMRD -> main
+    rts
+@load_main:
+    bit $C002           ; RAMRD -> main
+    lda ($00),y
+    rts
+
+; Store $05 to stream byte index X (0..3) at row base ($00/$01)+group offset ($02).
+dhgr_store_stream_byte:
+    txa
+    lsr a               ; +0 for idx 0/1, +1 for idx 2/3
+    clc
+    adc $02
+    tay
+    txa
+    and #$01
+    bne @store_main
+    bit $C005           ; RAMWRT -> auxiliary
+    lda $05
+    sta ($00),y
+    bit $C004           ; RAMWRT -> main
+    rts
+@store_main:
+    bit $C004           ; RAMWRT -> main
+    lda $05
+    sta ($00),y
+    rts
+
+; Phase tables indexed by (x % 7).
+dhgr_phase_stream_idx:
+    .byte $00, $00, $01, $01, $02, $02, $03
+dhgr_phase_shift_left:
+    .byte $00, $04, $01, $05, $02, $06, $03
+dhgr_phase_keep_mask:
+    .byte $70, $0F, $61, $1F, $43, $3F, $07
+dhgr_phase_crosses:
+    .byte $00, $01, $00, $01, $00, $01, $00
+dhgr_phase_shift_right:
+    .byte $00, $03, $00, $02, $00, $01, $00
+dhgr_phase_second_keep_mask:
+    .byte $7F, $7E, $7F, $7C, $7F, $78, $7F
+dhgr_phase_second_value_mask:
+    .byte $00, $01, $00, $03, $00, $07, $00
+
+dhgr_y_group_lo:
+    .byte $00, $28, $50
+dhgr_y_group_hi:
+    .byte $00, $00, $00

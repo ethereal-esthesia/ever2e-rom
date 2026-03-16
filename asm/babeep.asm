@@ -10,14 +10,11 @@
 
 ; babeep
 ; Args:      none
-; Clobbers:  A, X, Y, flags
+; Clobbers:  A, Y, flags
 ; Returns:   RTS
 babeep:
     ; "ba": lower, slightly slower chirp.
-    ; tone_play now toggles twice per inner step, so delay is doubled
-    ; versus the previous single-toggle tuning.
-    lda #$01            ; duration outer
-    ldx #$68            ; frequency delay
+    lda #$96            ; duration outer (50x vs #$03 baseline)
     jsr tone_play
 
     ; brief pause between syllables
@@ -27,9 +24,7 @@ babeep:
     bne @gap
 
     ; "beep": brighter/faster chirp.
-    ; delay doubled to preserve rough pitch after double-toggle change.
-    lda #$01            ; duration outer
-    ldx #$30            ; frequency delay
+    lda #$96            ; duration outer (50x vs #$03 baseline)
     jsr tone_play
 
     rts

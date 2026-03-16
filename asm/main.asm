@@ -10,25 +10,78 @@
 .import ensure_g65sc02_or_beep_loop
 
 .segment "CODE"
+.include "dhgr.inc"
+.include "get_key.inc"
+.include "reset.inc"
 
-; reset
-; Args:      none
-; Clobbers:  A, X, Y, flags
-; Returns:   does not return (falls into main_loop)
-reset:
-    jsr ensure_g65sc02_or_beep_loop
-    jsr softswitch_reset_optimal
-    ; Fill text page 1 + page 2 with spaces.
-    lda #$20
-    jsr fill_text_pages
-    ; Fill all writable main RAM except text pages with NUL.
-    lda #$00
-    jsr clear_ram_unrolled_fast
-    ; Quick audible startup test chirp.
-    jsr babeep
+PIXEL_X = $06
+PIXEL_Y = $07
 
 main_loop:
-    jmp main_loop
+    lda #$01
+    jsr dhgr_display
+    stz PIXEL_X
+    stz PIXEL_Y
+
+@wait_key:
+    jsr get_key_blocking
+    and #$7F
+
+    ; Accept only 0-9 / A-F / a-f and convert to color nibble 0-15.
+    cmp #'0'
+    bcc @wait_key
+    cmp #'9'+1
+    bcc @digit
+    cmp #'A'
+    bcc @check_lower
+    cmp #'F'+1
+    bcc @upper_hex
+
+@check_lower:
+    cmp #'a'
+    bcc @wait_key
+    cmp #'f'+1
+    bcs @wait_key
+
+    sec
+    sbc #'a'
+    clc
+    adc #$0A
+    jmp @plot
+
+@upper_hex:
+    sec
+    sbc #'A'
+    clc
+    adc #$0A
+    jmp @plot
+
+@digit:
+    sec
+    sbc #'0'
+
+@plot:
+    ldx PIXEL_X
+    ldy PIXEL_Y
+    clc                 ; page 1
+    jsr dhgr_plot
+    lda #$01            ; reassert DHGR display mode/page after each draw
+    jsr dhgr_display
+    
+    ; Inner loop: advance X across 0..139.
+    inc PIXEL_X
+    lda PIXEL_X
+    cmp #$8C
+    bcc @wait_key
+
+    ; Outer loop: when X wraps, advance Y across 0..191.
+    stz PIXEL_X
+    inc PIXEL_Y
+    lda PIXEL_Y
+    cmp #$C0
+    bcc @wait_key
+    stz PIXEL_Y
+    jmp @wait_key
 
 ; nmi
 ; Args:      none
