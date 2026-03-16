@@ -1,7 +1,6 @@
 ; Double-hires helpers (reset/minimal version).
 ;
 ; This pass keeps display setup + Y/page lookup and adds:
-; - div7_u8 (from bak)
 ; - x/7 + x%7 phase mapping
 ; - white nibble OR into stream bits [x*4 .. x*4+3]
 
@@ -11,31 +10,12 @@
 .export dhgr_plot
 .export dhgr_plot_page1
 .export dhgr_plot_page2
-.export div7_u8
 
 DHGR_PTR_LO   = $FB
 DHGR_PTR_HI   = $FC
 DHGR_PHASE    = $FD
 DHGR_PAGE_HI  = $FE
 DHGR_TMP      = $FA
-
-; div7_u8
-; Args:      A = unsigned dividend (0-255)
-; Clobbers:  A, X, Y, flags
-; Returns:   A = quotient (A / 7), Y = remainder (A % 7)
-div7_u8:
-    ldx #$00
-@div_loop:
-    cmp #$07
-    bcc @div_done
-    sec
-    sbc #$07
-    inx
-    bne @div_loop
-@div_done:
-    tay
-    txa
-    rts
 
 ; dhgr_display
 ; Args:      A = page (1 or 2)
@@ -107,17 +87,16 @@ dhgr_plot:
     pla
     sta DHGR_PAGE_HI    ; reuse: inverse color nibble
 
-    ; x/7 => group index, x%7 => phase within 7-pixel group.
-    txa
-    jsr div7_u8
-    asl a               ; group byte offset = quotient * 2
+    ; Lookup x/7-derived group offset and x%7 phase (faster than divide loop).
+    lda dhgr_x_group_off,x
     clc
     adc DHGR_PTR_LO
     sta DHGR_PTR_LO
     bcc :+
     inc DHGR_PTR_HI
 :
-    sty DHGR_PHASE      ; phase = x % 7
+    lda dhgr_x_phase,x
+    sta DHGR_PHASE
 
     ; First stream byte OR.
     ldx DHGR_PHASE
@@ -242,6 +221,17 @@ dhgr_phase_crosses:
     .byte $00, $01, $00, $01, $00, $01, $00
 dhgr_phase_second_mask:
     .byte $00, $01, $00, $03, $00, $07, $00
+
+; X mapping tables for 0..139
+dhgr_x_phase:
+.repeat 140, I
+    .byte (I - ((I / 7) * 7))
+.endrepeat
+
+dhgr_x_group_off:
+.repeat 140, I
+    .byte ((I / 7) * 2)
+.endrepeat
 
 ; Multiply table for 4-bit nibble: value * 7.
 dhgr_mul7:
