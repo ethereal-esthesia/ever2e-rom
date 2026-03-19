@@ -15,7 +15,8 @@ DHGR_PTR_LO   = $FB
 DHGR_PTR_HI   = $FC
 DHGR_PHASE    = $FD
 DHGR_PAGE_HI  = $FE
-DHGR_TMP      = $FA
+DHGR_STREAM   = $FA
+DHGR_COLORIDX = $F9
 
 ; dhgr_display
 ; Args:      A = page (1 or 2)
@@ -49,7 +50,7 @@ dhgr_plot_page2:
 ; dhgr_plot
 ; Args:      A = color (0-15), X = x (0-139), Y = y (0-191)
 ;            C clear => page 1, C set => page 2
-; Clobbers:  A, X, Y, flags, $FB-$FE (ZP scratch), RAMRD/RAMWRT soft-switches
+; Clobbers:  A, X, Y, flags, $F9-$FE (ZP scratch), RAMRD/RAMWRT soft-switches
 ; Returns:   RTS
 ; Notes:
 ; - Computes stream group/phase using x/7 and x%7.
@@ -97,29 +98,28 @@ dhgr_plot:
 :
     lda dhgr_x_phase,x
     sta DHGR_PHASE
-
-    ; First stream byte OR.
-    ldx DHGR_PHASE
-    lda dhgr_phase_stream_idx,x
     tax
-    jsr dhgr_load_stream_byte
-    ldx DHGR_PHASE
-    ora dhgr_phase_first_mask,x
-    sta DHGR_TMP
-    ; Build color-phase index: idx = (inverse_color * 7) + phase.
+    lda dhgr_phase_stream_idx,x
+    sta DHGR_STREAM
+
+    ; Build color-phase index once: idx = (inverse_color * 7) + phase.
     lda DHGR_PAGE_HI
     tay
     lda dhgr_mul7,y
     clc
     adc DHGR_PHASE
-    tay
-    lda dhgr_inv_first_mask,y
-    eor DHGR_TMP
-    pha
+    sta DHGR_COLORIDX
+
+    ; First stream byte OR.
+    ldx DHGR_STREAM
+    jsr dhgr_load_stream_byte
     ldx DHGR_PHASE
-    lda dhgr_phase_stream_idx,x
-    tax
-    pla
+    ora dhgr_phase_first_mask,x
+    sta DHGR_PAGE_HI
+    ldy DHGR_COLORIDX
+    lda dhgr_inv_first_mask,y
+    eor DHGR_PAGE_HI
+    ldx DHGR_STREAM
     jsr dhgr_store_stream_byte
 
     ; Crossing phases (1,3,5) OR into second stream byte.
@@ -127,30 +127,17 @@ dhgr_plot:
     lda dhgr_phase_crosses,x
     beq @done
 
-    lda dhgr_phase_stream_idx,x
-    clc
-    adc #$01
-    tax
+    ldx DHGR_STREAM
+    inx
     jsr dhgr_load_stream_byte
     ldx DHGR_PHASE
     ora dhgr_phase_second_mask,x
-    sta DHGR_TMP
-    ; Rebuild color-phase index for second-byte XOR mask.
-    lda DHGR_PAGE_HI
-    tay
-    lda dhgr_mul7,y
-    clc
-    adc DHGR_PHASE
-    tay
+    sta DHGR_PAGE_HI
+    ldy DHGR_COLORIDX
     lda dhgr_inv_second_mask,y
-    eor DHGR_TMP
-    pha
-    ldx DHGR_PHASE
-    lda dhgr_phase_stream_idx,x
-    clc
-    adc #$01
-    tax
-    pla
+    eor DHGR_PAGE_HI
+    ldx DHGR_STREAM
+    inx
     jsr dhgr_store_stream_byte
 
 @done:

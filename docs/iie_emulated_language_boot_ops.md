@@ -112,6 +112,38 @@ Define a practical operation set to bootstrap an emulated language runtime on to
 - `op.file_write`
 - `op.file_close`
 
+### Audio (Phase 1 Stub)
+- `op.audio_voice_set(freq, volume)`
+- `op.audio_stop()`
+- Backing device in phase 1 is Apple speaker only (Mockingboard-compatible API stub shape).
+- Simultaneous voices in phase 1: `1` maximum.
+- Volume range: `0-15`, where `0` is mute and `1-15` map to full volume behavior.
+- Pitch generation should use a phase-accumulator (NCO-style) scheduler instead of fixed-cycle gaps.
+- At each daisy-chain checkpoint: add `freq_step` to an accumulator and toggle speaker on overflow.
+- This permits fractional average periods by alternating nearby integer intervals (`N`/`N+1`), producing smoother pitch gradients.
+- Keep a hard upper checkpoint budget to limit jitter and preserve predictable audio cadence.
+
+### Audio + Page Work Interleave Profile (Phase 1)
+- Runtime hot loop should alternate checkpoints as:
+  - `audio_slice -> page_slice -> audio_slice -> page_slice`
+- Audio checkpoint deadline is authoritative.
+- `page_slice` (copy/map prep) may consume only remaining budget after the audio checkpoint.
+- Page/display commit is VBL-aware and atomic; bulk page copy can be incremental between commits.
+- Services should expose incremental paging operations (`start`, `step`, `status`) so long copies do not block audio cadence.
+
+### Interleave Stack Expansion (Future Phases)
+- Expand checkpoint stack to include:
+  - `audio_slice`
+  - `commit_slice` (VBL-gated display/page commit)
+  - `input_slice`
+  - `ram_slice`
+  - `gc_slice`
+  - `storage_slice`
+  - `trace_slice`
+- Add `mockingboard_slice` in the audio tier when card/backend support is enabled.
+- Enforce bounded per-slice budgets and overrun counters.
+- Standardize fixed-offset shared state bytes for resumable checkpoint state.
+
 ### Display/Graphics
 - `op.display_mode_set`
 - `op.display_page_set`
@@ -150,9 +182,55 @@ Define a practical operation set to bootstrap an emulated language runtime on to
 - Any operation touching soft-switches must restore baseline before return.
 - Long-running operations must periodically `yield` or trap on budget exhaustion.
 
+## Privileged Emulation Tier (System Processes)
+- System/background kernel processes run in the same emulated execution model as language/runtime processes.
+- Elevated behavior is granted through privileged capability bits and privileged opcodes/services, not by bypassing the emulated scheduler.
+- This keeps one canonical scheduler clock for both system and runtime tasks.
+- Reset/resume follows one checkpoint model: resume from emulated process/slice checkpoints, then rebind any native/JIT accelerators from that state.
+
+## Trap/Interrupt/Reset Operational Rules
+- BRK/trap entry records enough context to resume or report fault without losing checkpoint progress.
+- IRQ/NMI handlers stay minimal and defer substantive work to normal checkpoint slices.
+- Slice progress updates are atomic so resume after trap/interrupt is deterministic.
+- Reset aborts in-flight slice work, restores baseline soft-switches, and reinitializes scheduler state before runtime re-entry.
+
+## Handled Halt/Restart Reasons (v1)
+- `cold_reset`: full restart from boot path.
+- `manual_break`: operator/debug stop to monitor/debug shell.
+- `trap_fault`: panic/fault path from unrecoverable trap/ABI error.
+- `watchdog_timeout`: scheduler stall recovery path from watchdog failure.
+
+## Sandboxing Model (Phase 1)
+1. **Local-address-only execution**
+- Emulated code can address only virtual local memory regions managed by the runtime.
+- Emulated code cannot directly access hardware soft switches, ROM windows, or raw main/aux bank mapping.
+- All hardware-touching behavior must go through kernel service calls.
+
+2. **Address translation boundary**
+- Kernel/runtime maps virtual pages to physical backing pages (main/aux/disk-backed) behind the ABI boundary.
+- Emulated code remains unaware of physical address layout and bank-switch implementation details.
+
+3. **Lazy library method loading**
+- Method dispatch uses service/module tables with unresolved entries allowed at startup.
+- First call to an unresolved method traps to loader/binder logic.
+- Loader pages in required module code/data, validates metadata, and patches dispatch target atomically.
+- Subsequent calls use the bound target directly.
+
+4. **Display scope for phase 1**
+- Output mode is constrained to text 40-column only.
+- No graphics mode or DHGR APIs are exposed to emulated code in phase 1.
+- Provide a text page-flip commit model: write updates to a non-visible text page, then issue a commit/flip call to make changes visible atomically.
+
 ## Suggested Milestones
 1. Bring-up: interpreter + minimum boot subset
 2. Language core: functions, locals, arithmetic, branching
 3. Heap/object model + strings
 4. Module paging + service rebinding
 5. Native promotion of hot ops (architecture-local JIT path)
+
+## Phase Constraints
+- Phase 1: no JIT/native promotion; execution is interpreter/trap-dispatch only.
+- Future phases with JIT/native promotion must enforce daisy-chain/yield checkpoints frequently enough to observe VBL windows, so async page-flip commits can be scheduled reliably.
+- Future revisions may also use the same daisy-chain checkpoints to support asynchronous garbage collection slices and asynchronous Mockingboard service/update handling.
+- Phase 1 audio uses a single-voice Apple speaker mixer stub and preserves a Mockingboard-oriented service boundary for later upgrades.
+- If no Mockingboard/audio card backend is present, runtime still keeps an accurate kernel-owned master clock and drives speaker fallback against that same timing model.
