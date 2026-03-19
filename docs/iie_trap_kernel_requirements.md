@@ -32,6 +32,12 @@ This document defines what is needed to make that practical and debuggable on a 
 - Loads/unloads overlays into predefined RAM windows.
 - Supports atomic swap of service table entries to redirect calls at runtime.
 
+5. **Privileged emulation tier (system processes)**
+- Kernel/system background processes execute in the same emulated execution model as user/runtime processes.
+- System processes use elevated capability bits and privileged opcodes/services instead of separate native-only control loops.
+- Privileged operations still cross explicit ABI boundaries (no implicit direct hardware mutation paths).
+- This unifies scheduler semantics, clock accounting, trace format, and checkpoint/resume behavior across system and user work.
+
 ## Memory Plan Requirements
 1. **Fixed map specification**
 - Define immutable regions: vectors, kernel core, dispatcher tables, panic log.
@@ -87,6 +93,42 @@ This document defines what is needed to make that practical and debuggable on a 
 - Ability to replace interpreter/trap target with native optimized target.
 - JIT/native promotion should target the local host architecture so generated code paths are valid on the machine doing the execution.
 
+## Cross-Compiler Contract
+1. **Atomic op thunks**
+- Cross-compiled emulated operations should lower to atomic 6502 thunks.
+- Iteration 1 target: use only well-supported baseline opcodes available across 6502-family targets in scope, avoiding unstable/undocumented opcodes.
+- Each thunk must have a single entry and single exit path.
+- Each thunk must declare explicit input/output ABI and clobbers.
+- Each thunk must restore required soft-switch baseline before return.
+
+2. **Composable scheduling**
+- Atomic thunk boundaries allow safe chaining, substitution, and runtime rebinding.
+- Optimizer/JIT may reorder thunks only when ABI and side-effect contracts are preserved.
+
+### Iteration 1 Baseline Opcode Set
+- Use only documented baseline 6502 opcodes for thunk emission:
+  - `ADC`, `AND`, `ASL`, `BCC`, `BCS`, `BEQ`, `BIT`, `BMI`, `BNE`, `BPL`, `BRK`, `BVC`, `BVS`
+  - `CLC`, `CLD`, `CLI`, `CLV`, `CMP`, `CPX`, `CPY`
+  - `DEC`, `DEX`, `DEY`, `EOR`
+  - `INC`, `INX`, `INY`
+  - `JMP`, `JSR`
+  - `LDA`, `LDX`, `LDY`, `LSR`
+  - `NOP`
+  - `ORA`
+  - `PHA`, `PHP`, `PLA`, `PLP`
+  - `ROL`, `ROR`, `RTI`, `RTS`
+  - `SBC`, `SEC`, `SED`, `SEI`
+  - `STA`, `STX`, `STY`
+  - `TAX`, `TAY`, `TSX`, `TXA`, `TXS`, `TYA`
+- Exclude undocumented/illegal opcodes in v1.
+- Optional v2 profile may add 65C02-specific documented opcodes behind a feature flag.
+
+### Boundary and Bus Caveats (v1)
+- Page-boundary effects are treated as compatibility constraints, even for documented opcodes.
+- Branches (`Bxx`) incur page-cross timing penalties; cycle-exact paths must account for this.
+- Indexed addressing forms that cross a page may perform extra bus reads on NMOS 6502-class behavior; avoid MMIO/soft-switch side effects on those paths.
+- `JMP (indirect)` on NMOS 6502 has the `$xxFF` wraparound quirk; do not emit this form at page-end pointer locations in v1.
+
 ## Scheduler/Execution Model (v1)
 1. **Cooperative tasks**
 - `yield` service call.
@@ -95,6 +137,104 @@ This document defines what is needed to make that practical and debuggable on a 
 2. **Budget guards for long loops**
 - Back-edge check macro: decrement budget, trap/yield on zero.
 - Prevents lockup and enables safe daisy-chaining between blocks.
+
+## Daisy-Chain Audio/RAM Interleave Contract (v1)
+1. **Execution order**
+- Use strict alternating slices on the hot loop:
+  - `audio_slice -> ram_slice -> audio_slice -> ram_slice`
+- If there is no RAM work pending, run `audio_slice` only.
+
+2. **Slice budget policy**
+- Audio deadline is authoritative: speaker toggle deadlines are never skipped.
+- `ram_slice` consumes only remaining budget after the current audio checkpoint.
+- `ram_slice` must be resumable at any byte boundary and exit cleanly when budget is exhausted.
+
+3. **State block (stable ABI)**
+- Reserve a kernel-owned state block (prefer fixed ZP window) with at least:
+  - `aud_interval` (target half-period or NCO step)
+  - `aud_accum_lo/hi` (phase accumulator)
+  - `aud_phase` (current speaker polarity/edge state)
+  - `ram_src_lo/hi`
+  - `ram_dst_lo/hi`
+  - `ram_remaining_lo/hi`
+  - `ram_flags` (pending/active/commit-needed)
+
+4. **RAM swap semantics**
+- RAM copy/swap service must expose:
+  - `start(src,dst,len,mode)`
+  - `step(max_cycles)` (or fixed-size byte step)
+  - `status()` (`idle`, `active`, `done`, `error`)
+- `step` is idempotent and restart-safe after yield/trap boundaries.
+
+5. **VBL-aligned commit**
+- Page-flip and visible mapping commits happen only at VBL-aware checkpoints.
+- Bulk copy can run outside VBL windows, but visible pointer/switch commit must be atomic at commit point.
+
+6. **Soft-switch discipline during interleave**
+- Audio slices must not alter display/bank-routing soft-switch baseline.
+- RAM slices may alter routing switches only inside guarded entry/exit wrappers and must restore baseline before returning.
+
+7. **Extended interleave stack roadmap**
+- Add bounded slices in this priority order:
+  - `audio_slice`
+  - `commit_slice` (VBL-gated page/display commit)
+  - `input_slice`
+  - `ram_slice`
+  - `gc_slice`
+  - `storage_slice`
+  - `trace_slice`
+- Add optional `mockingboard_slice` in the audio tier when a card/backend is present.
+- Keep explicit per-slice cycle budgets and overrun accounting counters.
+- Define a fixed-offset shared state block for resumable slice state.
+
+8. **Clock accuracy policy (no audio card present)**
+- When no Mockingboard/audio card backend is present, maintain a kernel-owned accurate master clock and drive speaker fallback from that clock.
+- Speaker fallback cadence must remain phase-accurate to the same scheduler timeline used by paging/input slices.
+- Absence of external audio hardware must not relax checkpoint timing guarantees.
+- Clock ownership remains in the shared emulated scheduler timeline so privileged system processes and user processes observe one canonical time base.
+
+## BRK/Interrupt/Reset Handling
+1. **BRK policy**
+- `BRK` enters trap dispatcher only through kernel-owned vector.
+- Dispatcher must capture PC, P, A/X/Y, SP, active slice ID, and switch snapshot before decoding payload.
+- Unknown/invalid trap payload returns structured error (`ERR_UNIMPL`/`ERR_ABI`) without corrupting scheduler state.
+
+2. **IRQ/NMI policy**
+- IRQ/NMI handlers are minimal and bounded: timestamp event, set flags, and return.
+- No long copy/page operations inside IRQ/NMI handlers.
+- Deferred work is consumed by normal checkpoint slices (`input_slice`, `audio_slice`, `storage_slice`).
+
+3. **Checkpoint-safe resume**
+- Any BRK/IRQ/NMI boundary must be restart-safe from the last committed slice state.
+- Each slice commits progress atomically (for example bytes-copied count) before yielding or trapping.
+- Resume path re-applies baseline soft-switch state before re-entering slice execution.
+
+4. **Reset policy**
+- Reset performs full soft-switch baseline restore and marks all in-flight slices as aborted.
+- Kernel reinitializes scheduler budgets, slice pointers, and shared state-block ownership map.
+- Pending page commits are discarded unless metadata marks them commit-safe/replayable.
+- Reset path writes a compact reset-reason record to panic/debug log.
+- Privileged system processes resume from emulated checkpoints under the same rules as other slices; native/JIT artifacts are re-bound from checkpointed emulated state.
+
+5. **Break-glass panic behavior**
+- If trap/interrupt invariants fail, enter panic path:
+  - force safe text mode baseline
+  - dump state record
+  - halt or return to monitor according to build flag
+
+6. **Handled halt/restart reason types (v1)**
+- `cold_reset`
+  - Cause: power-on or explicit cold reboot.
+  - Handling: full kernel/scheduler reinit, discard in-flight slices, restart from boot entry.
+- `manual_break`
+  - Cause: operator/debugger stop request.
+  - Handling: checkpoint if safe, emit debug record, transfer to monitor/debug shell.
+- `trap_fault`
+  - Cause: invalid trap payload, ABI violation, or unrecoverable dispatcher error.
+  - Handling: panic path with fault context record, optional controlled restart policy.
+- `watchdog_timeout`
+  - Cause: budget/heartbeat failure indicating scheduler stall.
+  - Handling: panic + reset-reason log, recover from last committed checkpoint where possible.
 
 ## I/O and Device Model
 1. **Driver boundary**
@@ -120,6 +260,39 @@ This document defines what is needed to make that practical and debuggable on a 
 - Maintain a canonical in-kernel switch-state model.
 - Re-assert baseline switch state after display/page operations.
 - Add optional assertions to verify switch state at service boundaries.
+
+## Memory Pressure and App Suspension
+1. **Suspend-to-disk fallback**
+- If RAM pressure prevents keeping all runnable apps/modules resident, kernel may suspend background/least-recent apps.
+- Eviction priority is least-used apps first (LRU/LFU policy), with foreground and system-critical tasks pinned/protected where configured.
+- Suspension writes an app save-state image to disk (execution state + mapped page metadata + required capability/context info).
+- Resume restores from save-state image and rebinds service/module pointers before re-entry.
+
+2. **Deterministic suspension contract**
+- Suspension/resume points must align to checkpoint-safe slice boundaries.
+- Save-state format versioning and checksums are required to prevent corrupt resume paths.
+- Foreground responsiveness and audio checkpoint deadlines take priority over bulk save-state I/O.
+- Save-state destination should default to the disk/media associated with the app being suspended (not a single global OS disk by default).
+- If that associated disk is missing/full/read-only, present a user dialog prompting for the app’s disk (or an explicit alternate target) before committing suspend state.
+
+3. **App-switch checkpoint policy**
+- On app switch, OS checkpoints the outgoing app state automatically.
+- Checkpoint format should be diff-based against the app's last committed base state to reduce I/O and latency.
+- Periodically emit consolidated full checkpoints to bound diff-chain length and recovery time.
+
+4. **Disk write-lock ownership**
+- During checkpoint commit, OS holds an explicit write lock for the target save-state store.
+- App/runtime writes to that store are serialized through OS lock ownership (no direct concurrent writes).
+- Lock state must be journaled so crash recovery can determine whether a checkpoint commit was complete, partial, or rolled back.
+
+5. **Failure and lock-override warning**
+- If the system detects stale/uncertain lock state after failure, do not silently clear lock and continue.
+- Present a user warning before any lock override/unlock operation, including risk of losing last unsynced checkpoint data.
+- Provide explicit recovery choices (retry recovery, force unlock, alternate media) and log selected action in panic/debug record.
+
+6. **Recent-state recovery window target**
+- Journaling plus regular periodic disk writes should support recovering full app state for approximately the previous 15 minutes before failure.
+- Recovery design should prioritize deterministic replay/apply order and bounded startup recovery time.
 
 ## Debuggability Requirements
 1. **Deterministic trap trace mode**
