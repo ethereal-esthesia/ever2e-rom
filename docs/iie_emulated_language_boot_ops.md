@@ -234,3 +234,7 @@ Define a practical operation set to bootstrap an emulated language runtime on to
 - Future revisions may also use the same daisy-chain checkpoints to support asynchronous garbage collection slices and asynchronous Mockingboard service/update handling.
 - Phase 1 audio uses a single-voice Apple speaker mixer stub and preserves a Mockingboard-oriented service boundary for later upgrades.
 - If no Mockingboard/audio card backend is present, runtime still keeps an accurate kernel-owned master clock and drives speaker fallback against that same timing model.
+- Accelerator gating:
+  - `native_jit`, `thunk_fastpath`, and `external_hw` are independently disable-able at boot/runtime.
+  - If no timing card/reliable timing profile is present, force-disable `external_hw` and keep `native_jit` disabled by default until deterministic timing validation passes.
+  - Any accelerator mode change applies only at checkpoint boundaries and must rebind execution to canonical dispatcher entrypoints safely.

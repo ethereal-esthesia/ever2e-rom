@@ -193,6 +193,46 @@ This document defines what is needed to make that practical and debuggable on a 
 - Absence of external audio hardware must not relax checkpoint timing guarantees.
 - Clock ownership remains in the shared emulated scheduler timeline so privileged system processes and user processes observe one canonical time base.
 
+## CPU Accelerator Disable Policy
+1. **Accelerator classes**
+- `native_jit`:
+  - Native/JIT-promoted blocks generated from emulated code.
+- `thunk_fastpath`:
+  - Precompiled 6502 thunk helpers that replace slower generic dispatch paths.
+- `external_hw`:
+  - Physical CPU accelerator behavior exposed by host/emulator profile (for example fast host stepping modes).
+
+2. **Hard-off controls**
+- Kernel keeps a boot/runtime control word with one disable bit per accelerator class:
+  - `ACCEL_DISABLE_NATIVE_JIT`
+  - `ACCEL_DISABLE_THUNK_FASTPATH`
+  - `ACCEL_DISABLE_EXTERNAL_HW`
+- Any disable bit forces immediate fallback at the next checkpoint boundary; no partial in-flight mode changes.
+
+3. **Shutdown semantics per class**
+- `native_jit` off:
+  - stop issuing new native promotions
+  - invalidate native entry table
+  - rebind execution to emulated dispatcher entrypoints
+- `thunk_fastpath` off:
+  - stop selecting optimized thunk variants
+  - route service/method calls through canonical interpreter/trap path
+- `external_hw` off:
+  - pin scheduler to canonical cycle profile
+  - ignore host/emulator turbo multipliers for kernel timeline decisions
+
+4. **No timing card policy**
+- If no timing card (or no reliable timing source profile) is detected:
+  - force `ACCEL_DISABLE_EXTERNAL_HW=1`
+  - default `ACCEL_DISABLE_NATIVE_JIT=1` for deterministic bring-up
+  - allow `thunk_fastpath` only when its cycle model is proven equivalent to canonical interpreter timing at checkpoint granularity
+- Kernel logs a one-line reason code so traces explain why accelerators were disabled.
+
+5. **Operator override**
+- Provide monitor/debug command to toggle each class independently.
+- Any manual enable request on a no-timing-card system must print a warning and require explicit confirm in debug builds.
+- Release builds may allow policy file override, but must still emit a startup warning banner when deterministic timing is not guaranteed.
+
 ## BRK/Interrupt/Reset Handling
 1. **BRK policy**
 - `BRK` enters trap dispatcher only through kernel-owned vector.
