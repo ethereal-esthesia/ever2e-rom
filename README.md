@@ -1,8 +1,8 @@
-# Custom Apple IIe Platinum ROM Spec (65C02) v0.1
+# Custom Apple IIe Platinum ROM Spec (6502) v0.1
 
 ## 1. Target
 - Machine: Apple IIe Platinum-compatible
-- CPU: `65C02` only (use 65C02 instructions)
+- CPU: `6502` only (use 6502 instructions)
 - ROM image: `16 KB` motherboard ROM (`$C000-$FFFF` mapping behavior compatible with IIe)
 - Features: built-in `Monitor`, `BASIC`, and ROM-resident `DOS bootstrap`
 
