@@ -238,3 +238,20 @@ Define a practical operation set to bootstrap an emulated language runtime on to
   - `native_jit`, `thunk_fastpath`, and `external_hw` are independently disable-able at boot/runtime.
   - If no timing card/reliable timing profile is present, force-disable `external_hw` and keep `native_jit` disabled by default until deterministic timing validation passes.
   - Any accelerator mode change applies only at checkpoint boundaries and must rebind execution to canonical dispatcher entrypoints safely.
+
+## Phase 2 Display Expansion
+- Expose HGR display services for emulated applications.
+- Allow custom text rendering in HGR mode (font/glyph blit path owned by runtime).
+- Allow custom graphics rendering in HGR mode through bounded drawing APIs (plot/span/blit) rather than raw hardware switch access.
+- Preserve phase-1 atomic commit semantics so HGR updates can still be staged and flipped predictably.
+
+## Phase 3 Framed Graphics Windowing
+- Add framed mode support for both GR and DHGR graphics windows.
+- Support multiple visual states per page (window state stacks/snapshots) so a page can host alternate framed layouts without full redraw.
+- Define window-state commit rules so GR and DHGR framed windows can be swapped/restored deterministically at checkpoint boundaries.
+- Keep per-window state metadata runtime-owned to preserve sandboxing and avoid direct app access to physical page routing.
+- Add dot-matrix print mapping path for DHGR where each color sample is represented by 4 neighboring printer dots; exact neighborhood geometry is TBD to match DHGR horizontal/phase behavior.
+- For US Letter at 160 x 144 dpi, use this canonical full-page grid budget:
+  - horizontal dots: `8.5 * 160 = 1360`
+  - vertical dots: `11 * 144 = 1584`
+  - total dots: `1360 * 1584 = 2,154,240`
