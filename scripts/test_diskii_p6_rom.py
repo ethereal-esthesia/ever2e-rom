@@ -337,6 +337,10 @@ def main() -> None:
     # Critical path 2: mismatch recovery (Cn5D -> Cn5C)
     stock_mismatch_cycles = run_path(stock, 0x5D, 0x5C, [0xD5, 0xAA, 0xAD])
     custom_mismatch_cycles = run_path(custom, 0x5D, 0x5C, [0xD5, 0xAA, 0xAD])
+    # Sync prologue with one explicit wait-loop spin before each match byte.
+    spin_reads = [0x00, 0xD5, 0x00, 0xAA, 0x00, 0x96]
+    stock_sync_spin_cycles = run_path(stock, 0x5C, 0x83, spin_reads.copy())
+    custom_sync_spin_cycles = run_path(custom, 0x5C, 0x83, spin_reads.copy())
 
     # Critical path 3: decode to $0300 buffer (CnA6 -> CnBA)
     stock_decode_0300_cycles = run_path(stock, 0xA6, 0xBA, [0x80] * 0x56, init_x=0, init_a=0)
@@ -351,19 +355,26 @@ def main() -> None:
     init_pack = {0x26: 0x00, 0x27: 0x04, 0x3D: 0x00, 0x0800: 0xFF, 0x2B: 0x00}
     stock_pack_cycles = run_path(stock, 0xD7, 0xD3, [], init_mem=init_pack, max_steps=500000)
     custom_pack_cycles = run_path(custom, 0xD7, 0xD3, [], init_mem=init_pack, max_steps=500000)
+    # Decode tail: one wait-loop iteration then fall through to A0 #00.
+    stock_decode_tail_cycles = run_path(stock, 0xCB, 0xD7, [0x00, 0x80], init_a=0, init_x=0, init_y=0)
+    custom_decode_tail_cycles = run_path(custom, 0xCB, 0xD7, [0x00, 0x80], init_a=0, init_x=0, init_y=0)
 
     expected = {
         "sync": 38,
         "mismatch": 42,
+        "sync_spins": 59,
         "decode_0300": 2323,
         "decode_dst": 7167,
         "pack": 9766,
+        "decode_tail": 22,
     }
 
     if stock_sync_cycles != expected["sync"]:
         raise AssertionError(f"stock sync cycles changed: {stock_sync_cycles} != {expected['sync']}")
     if stock_mismatch_cycles != expected["mismatch"]:
         raise AssertionError(f"stock mismatch cycles changed: {stock_mismatch_cycles} != {expected['mismatch']}")
+    if stock_sync_spin_cycles != expected["sync_spins"]:
+        raise AssertionError(f"stock sync_spins cycles changed: {stock_sync_spin_cycles} != {expected['sync_spins']}")
     if stock_decode_0300_cycles != expected["decode_0300"]:
         raise AssertionError(
             f"stock decode_0300 cycles changed: {stock_decode_0300_cycles} != {expected['decode_0300']}"
@@ -374,11 +385,17 @@ def main() -> None:
         )
     if stock_pack_cycles != expected["pack"]:
         raise AssertionError(f"stock pack cycles changed: {stock_pack_cycles} != {expected['pack']}")
+    if stock_decode_tail_cycles != expected["decode_tail"]:
+        raise AssertionError(f"stock decode_tail cycles changed: {stock_decode_tail_cycles} != {expected['decode_tail']}")
 
     if custom_sync_cycles != stock_sync_cycles:
         raise AssertionError(f"custom sync cycles differ: custom={custom_sync_cycles}, stock={stock_sync_cycles}")
     if custom_mismatch_cycles != stock_mismatch_cycles:
         raise AssertionError(f"custom mismatch cycles differ: custom={custom_mismatch_cycles}, stock={stock_mismatch_cycles}")
+    if custom_sync_spin_cycles != stock_sync_spin_cycles:
+        raise AssertionError(
+            f"custom sync_spins cycles differ: custom={custom_sync_spin_cycles}, stock={stock_sync_spin_cycles}"
+        )
     if custom_decode_0300_cycles != stock_decode_0300_cycles:
         raise AssertionError(
             f"custom decode_0300 cycles differ: custom={custom_decode_0300_cycles}, stock={stock_decode_0300_cycles}"
@@ -389,12 +406,18 @@ def main() -> None:
         )
     if custom_pack_cycles != stock_pack_cycles:
         raise AssertionError(f"custom pack cycles differ: custom={custom_pack_cycles}, stock={stock_pack_cycles}")
+    if custom_decode_tail_cycles != stock_decode_tail_cycles:
+        raise AssertionError(
+            f"custom decode_tail cycles differ: custom={custom_decode_tail_cycles}, stock={stock_decode_tail_cycles}"
+        )
 
     print("PASS: signature bytes and critical path cycle counts verified")
     print(
         "  "
         f"sync={custom_sync_cycles}, mismatch={custom_mismatch_cycles}, "
-        f"decode_0300={custom_decode_0300_cycles}, decode_dst={custom_decode_dst_cycles}, pack={custom_pack_cycles}"
+        f"sync_spins={custom_sync_spin_cycles}, "
+        f"decode_0300={custom_decode_0300_cycles}, decode_dst={custom_decode_dst_cycles}, "
+        f"decode_tail={custom_decode_tail_cycles}, pack={custom_pack_cycles}"
     )
 
 
