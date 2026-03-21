@@ -7,6 +7,7 @@ ROM_DIR := $(ROOT)ROMS
 PROFILE := $(ROOT)profiles/Apple2eEver2eBootLoopNoSlots.emu
 JVM_DIR ?= /Users/shane/app/ever2e
 JVM_P6_TEST_FILTER ?= test.cpu.Cpu65c02CycleTimingTest
+JVM_P6_DISK_FILTER ?= test.device.DiskIISlotRomSignatureTest
 
 ASM_SRC := \
 	$(ROOT)asm/main.asm \
@@ -74,7 +75,11 @@ test-p6-precheck:
 
 # Authoritative gate: JVM regression suite.
 test-p6-jvm:
-	cd $(JVM_DIR) && ./gradlew test --tests $(JVM_P6_TEST_FILTER)
+	cd $(JVM_DIR) && if [ -n "$(JVM_P6_DISK_FILTER)" ] && [ -f src/test/device/DiskIISlotRomSignatureTest.java ]; then \
+		./gradlew test --tests $(JVM_P6_TEST_FILTER) --tests $(JVM_P6_DISK_FILTER); \
+	else \
+		./gradlew test --tests $(JVM_P6_TEST_FILTER); \
+	fi
 
 # One command runs both, in order.
 test-p6: test-p6-precheck test-p6-jvm

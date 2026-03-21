@@ -1,0 +1,32 @@
+name: P6 Regression
+
+on:
+  pull_request:
+  push:
+    branches: [ master ]
+
+jobs:
+  test-p6:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout ever2e-rom
+        uses: actions/checkout@v4
+
+      - name: Set up Java 25
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '25'
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Checkout ever2e JVM repo
+        run: git clone https://github.com/ethereal-esthesia/ever2e.git ever2e-jvm
+
+      - name: Run unified P6 regression gate
+        run: make test-p6
+        env:
+          JVM_DIR: ${{ github.workspace }}/ever2e-jvm
