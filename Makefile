@@ -6,6 +6,7 @@ OUT_DIR := $(ROOT)build
 ROM_DIR := $(ROOT)ROMS
 PROFILE := $(ROOT)profiles/Apple2eEver2eBootLoopNoSlots.emu
 JVM_DIR ?= /Users/shane/app/ever2e
+JVM_P6_TEST_FILTER ?= test.cpu.Cpu65c02CycleTimingTest
 
 ASM_SRC := \
 	$(ROOT)asm/main.asm \
@@ -65,8 +66,18 @@ build: toolcheck $(ROM) $(CHECKSUM_FILE)
 run: build
 	cd $(JVM_DIR) && ./gradlew run --args="$(PROFILE) $(ARGS)"
 
-test-p6:
-	python3 $(ROOT)scripts/test_diskii_p6_rom.py
+.PHONY: test-p6-precheck test-p6-jvm
+
+# Fast local guardrail.
+test-p6-precheck:
+	python3 -m unittest tests.test_diskii_p6_entrypoints
+
+# Authoritative gate: JVM regression suite.
+test-p6-jvm:
+	cd $(JVM_DIR) && ./gradlew test --tests $(JVM_P6_TEST_FILTER)
+
+# One command runs both, in order.
+test-p6: test-p6-precheck test-p6-jvm
 
 clean:
 	rm -rf $(OUT_DIR)

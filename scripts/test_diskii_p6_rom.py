@@ -2,7 +2,8 @@
 """
 Checks Disk II P6 stock/custom ROM compatibility invariants:
 1) Signature bytes used by ProDOS/Disk II detection.
-2) Cycle counts for critical timing-sensitive code paths.
+2) Entry point signature bytes for useful external/internal hooks.
+3) Cycle counts for critical timing-sensitive code paths.
 """
 
 from __future__ import annotations
@@ -22,6 +23,29 @@ PINNED_BYTES = {
     0x05: 0x03,
     0x07: 0x3C,
     0xFF: 0x00,  # 16-sector style.
+}
+
+# Useful entry points we rely on for compatibility checks and timing tests.
+# We pin short leading byte signatures to spot accidental regressions.
+ENTRY_POINT_SIGNATURES = {
+    0x00: [0xA2, 0x20, 0xA0, 0x00, 0xA2, 0x03, 0x86, 0x3C],  # Boot entry
+    0x5C: [0x18, 0x08, 0xBD, 0x8C, 0xC0, 0x10, 0xFB, 0x49],  # Sync prologue
+    0x5D: [0x08, 0xBD, 0x8C, 0xC0, 0x10, 0xFB, 0x49, 0xD5],  # Sync mismatch recovery
+    0xA6: [0xA0, 0x56, 0x84, 0x3C, 0xBC, 0x8C, 0xC0, 0x10],  # Decode to $0300 entry
+    0xBA: [0x84, 0x3C, 0xBC, 0x8C, 0xC0, 0x10, 0xFB, 0x59],  # Decode to ($26),Y entry
+    0xCB: [0xBC, 0x8C, 0xC0, 0x10, 0xFB, 0x59, 0xD6, 0x02],  # Decode tail entry
+    0xD7: [0xA2, 0x56, 0xCA, 0x30, 0xFB, 0xB1, 0x26, 0x5E],  # Bit-pack loop entry
+}
+
+# Baseline stock timings for timing-sensitive paths.
+EXPECTED_CYCLES = {
+    "sync": 38,
+    "mismatch": 42,
+    "sync_spins": 59,
+    "decode_0300": 2323,
+    "decode_dst": 7167,
+    "pack": 9766,
+    "decode_tail": 22,
 }
 
 
@@ -323,101 +347,123 @@ def assert_pinned_bytes(rom: bytes, name: str) -> None:
             raise AssertionError(f"{name}: byte ${off:02X} expected ${expected:02X}, got ${got:02X}")
 
 
-def main() -> None:
-    stock = STOCK_ROM.read_bytes()
-    custom = CUSTOM_ROM.read_bytes()
+def assert_entry_point_signatures(rom: bytes, name: str) -> None:
+    for off, expected in ENTRY_POINT_SIGNATURES.items():
+        got = list(rom[off:off + len(expected)])
+        if got != expected:
+            raise AssertionError(
+                f"{name}: entry ${off:02X} bytes changed: "
+                f"expected {[f'${v:02X}' for v in expected]}, got {[f'${v:02X}' for v in got]}"
+            )
 
-    assert_pinned_bytes(stock, "stock")
-    assert_pinned_bytes(custom, "custom")
+
+def measure_cycles(stock: bytes, custom: bytes) -> dict[str, int]:
+    out: dict[str, int] = {}
 
     # Critical path 1: sync prologue (Cn5C -> Cn83)
-    stock_sync_cycles = run_path(stock, 0x5C, 0x83, [0xD5, 0xAA, 0x96])
-    custom_sync_cycles = run_path(custom, 0x5C, 0x83, [0xD5, 0xAA, 0x96])
+    out["stock_sync"] = run_path(stock, 0x5C, 0x83, [0xD5, 0xAA, 0x96])
+    out["custom_sync"] = run_path(custom, 0x5C, 0x83, [0xD5, 0xAA, 0x96])
 
     # Critical path 2: mismatch recovery (Cn5D -> Cn5C)
-    stock_mismatch_cycles = run_path(stock, 0x5D, 0x5C, [0xD5, 0xAA, 0xAD])
-    custom_mismatch_cycles = run_path(custom, 0x5D, 0x5C, [0xD5, 0xAA, 0xAD])
+    out["stock_mismatch"] = run_path(stock, 0x5D, 0x5C, [0xD5, 0xAA, 0xAD])
+    out["custom_mismatch"] = run_path(custom, 0x5D, 0x5C, [0xD5, 0xAA, 0xAD])
     # Sync prologue with one explicit wait-loop spin before each match byte.
     spin_reads = [0x00, 0xD5, 0x00, 0xAA, 0x00, 0x96]
-    stock_sync_spin_cycles = run_path(stock, 0x5C, 0x83, spin_reads.copy())
-    custom_sync_spin_cycles = run_path(custom, 0x5C, 0x83, spin_reads.copy())
+    out["stock_sync_spins"] = run_path(stock, 0x5C, 0x83, spin_reads.copy())
+    out["custom_sync_spins"] = run_path(custom, 0x5C, 0x83, spin_reads.copy())
 
     # Critical path 3: decode to $0300 buffer (CnA6 -> CnBA)
-    stock_decode_0300_cycles = run_path(stock, 0xA6, 0xBA, [0x80] * 0x56, init_x=0, init_a=0)
-    custom_decode_0300_cycles = run_path(custom, 0xA6, 0xBA, [0x80] * 0x56, init_x=0, init_a=0)
+    out["stock_decode_0300"] = run_path(stock, 0xA6, 0xBA, [0x80] * 0x56, init_x=0, init_a=0)
+    out["custom_decode_0300"] = run_path(custom, 0xA6, 0xBA, [0x80] * 0x56, init_x=0, init_a=0)
 
     # Critical path 4: decode/store to ($26),Y buffer (CnBA -> CnCB)
     init_ptr = {0x26: 0x00, 0x27: 0x04}
-    stock_decode_dst_cycles = run_path(stock, 0xBA, 0xCB, [0x80] * 0x100, init_x=0, init_a=0, init_y=0, init_mem=init_ptr)
-    custom_decode_dst_cycles = run_path(custom, 0xBA, 0xCB, [0x80] * 0x100, init_x=0, init_a=0, init_y=0, init_mem=init_ptr)
+    out["stock_decode_dst"] = run_path(stock, 0xBA, 0xCB, [0x80] * 0x100, init_x=0, init_a=0, init_y=0, init_mem=init_ptr)
+    out["custom_decode_dst"] = run_path(custom, 0xBA, 0xCB, [0x80] * 0x100, init_x=0, init_a=0, init_y=0, init_mem=init_ptr)
 
     # Critical path 5: bit-pack loop pass (CnD7 -> CnD3)
     init_pack = {0x26: 0x00, 0x27: 0x04, 0x3D: 0x00, 0x0800: 0xFF, 0x2B: 0x00}
-    stock_pack_cycles = run_path(stock, 0xD7, 0xD3, [], init_mem=init_pack, max_steps=500000)
-    custom_pack_cycles = run_path(custom, 0xD7, 0xD3, [], init_mem=init_pack, max_steps=500000)
+    out["stock_pack"] = run_path(stock, 0xD7, 0xD3, [], init_mem=init_pack, max_steps=500000)
+    out["custom_pack"] = run_path(custom, 0xD7, 0xD3, [], init_mem=init_pack, max_steps=500000)
     # Decode tail: one wait-loop iteration then fall through to A0 #00.
-    stock_decode_tail_cycles = run_path(stock, 0xCB, 0xD7, [0x00, 0x80], init_a=0, init_x=0, init_y=0)
-    custom_decode_tail_cycles = run_path(custom, 0xCB, 0xD7, [0x00, 0x80], init_a=0, init_x=0, init_y=0)
+    out["stock_decode_tail"] = run_path(stock, 0xCB, 0xD7, [0x00, 0x80], init_a=0, init_x=0, init_y=0)
+    out["custom_decode_tail"] = run_path(custom, 0xCB, 0xD7, [0x00, 0x80], init_a=0, init_x=0, init_y=0)
+    return out
 
-    expected = {
-        "sync": 38,
-        "mismatch": 42,
-        "sync_spins": 59,
-        "decode_0300": 2323,
-        "decode_dst": 7167,
-        "pack": 9766,
-        "decode_tail": 22,
-    }
 
-    if stock_sync_cycles != expected["sync"]:
-        raise AssertionError(f"stock sync cycles changed: {stock_sync_cycles} != {expected['sync']}")
-    if stock_mismatch_cycles != expected["mismatch"]:
-        raise AssertionError(f"stock mismatch cycles changed: {stock_mismatch_cycles} != {expected['mismatch']}")
-    if stock_sync_spin_cycles != expected["sync_spins"]:
-        raise AssertionError(f"stock sync_spins cycles changed: {stock_sync_spin_cycles} != {expected['sync_spins']}")
-    if stock_decode_0300_cycles != expected["decode_0300"]:
+def assert_cycles(results: dict[str, int]) -> None:
+    if results["stock_sync"] != EXPECTED_CYCLES["sync"]:
+        raise AssertionError(f"stock sync cycles changed: {results['stock_sync']} != {EXPECTED_CYCLES['sync']}")
+    if results["stock_mismatch"] != EXPECTED_CYCLES["mismatch"]:
+        raise AssertionError(f"stock mismatch cycles changed: {results['stock_mismatch']} != {EXPECTED_CYCLES['mismatch']}")
+    if results["stock_sync_spins"] != EXPECTED_CYCLES["sync_spins"]:
         raise AssertionError(
-            f"stock decode_0300 cycles changed: {stock_decode_0300_cycles} != {expected['decode_0300']}"
+            f"stock sync_spins cycles changed: {results['stock_sync_spins']} != {EXPECTED_CYCLES['sync_spins']}"
         )
-    if stock_decode_dst_cycles != expected["decode_dst"]:
+    if results["stock_decode_0300"] != EXPECTED_CYCLES["decode_0300"]:
         raise AssertionError(
-            f"stock decode_dst cycles changed: {stock_decode_dst_cycles} != {expected['decode_dst']}"
+            f"stock decode_0300 cycles changed: {results['stock_decode_0300']} != {EXPECTED_CYCLES['decode_0300']}"
         )
-    if stock_pack_cycles != expected["pack"]:
-        raise AssertionError(f"stock pack cycles changed: {stock_pack_cycles} != {expected['pack']}")
-    if stock_decode_tail_cycles != expected["decode_tail"]:
-        raise AssertionError(f"stock decode_tail cycles changed: {stock_decode_tail_cycles} != {expected['decode_tail']}")
+    if results["stock_decode_dst"] != EXPECTED_CYCLES["decode_dst"]:
+        raise AssertionError(
+            f"stock decode_dst cycles changed: {results['stock_decode_dst']} != {EXPECTED_CYCLES['decode_dst']}"
+        )
+    if results["stock_pack"] != EXPECTED_CYCLES["pack"]:
+        raise AssertionError(f"stock pack cycles changed: {results['stock_pack']} != {EXPECTED_CYCLES['pack']}")
+    if results["stock_decode_tail"] != EXPECTED_CYCLES["decode_tail"]:
+        raise AssertionError(
+            f"stock decode_tail cycles changed: {results['stock_decode_tail']} != {EXPECTED_CYCLES['decode_tail']}"
+        )
 
-    if custom_sync_cycles != stock_sync_cycles:
-        raise AssertionError(f"custom sync cycles differ: custom={custom_sync_cycles}, stock={stock_sync_cycles}")
-    if custom_mismatch_cycles != stock_mismatch_cycles:
-        raise AssertionError(f"custom mismatch cycles differ: custom={custom_mismatch_cycles}, stock={stock_mismatch_cycles}")
-    if custom_sync_spin_cycles != stock_sync_spin_cycles:
+    if results["custom_sync"] != results["stock_sync"]:
+        raise AssertionError(f"custom sync cycles differ: custom={results['custom_sync']}, stock={results['stock_sync']}")
+    if results["custom_mismatch"] != results["stock_mismatch"]:
         raise AssertionError(
-            f"custom sync_spins cycles differ: custom={custom_sync_spin_cycles}, stock={stock_sync_spin_cycles}"
+            f"custom mismatch cycles differ: custom={results['custom_mismatch']}, stock={results['stock_mismatch']}"
         )
-    if custom_decode_0300_cycles != stock_decode_0300_cycles:
+    if results["custom_sync_spins"] != results["stock_sync_spins"]:
         raise AssertionError(
-            f"custom decode_0300 cycles differ: custom={custom_decode_0300_cycles}, stock={stock_decode_0300_cycles}"
+            f"custom sync_spins cycles differ: custom={results['custom_sync_spins']}, stock={results['stock_sync_spins']}"
         )
-    if custom_decode_dst_cycles != stock_decode_dst_cycles:
+    if results["custom_decode_0300"] != results["stock_decode_0300"]:
         raise AssertionError(
-            f"custom decode_dst cycles differ: custom={custom_decode_dst_cycles}, stock={stock_decode_dst_cycles}"
+            f"custom decode_0300 cycles differ: custom={results['custom_decode_0300']}, "
+            f"stock={results['stock_decode_0300']}"
         )
-    if custom_pack_cycles != stock_pack_cycles:
-        raise AssertionError(f"custom pack cycles differ: custom={custom_pack_cycles}, stock={stock_pack_cycles}")
-    if custom_decode_tail_cycles != stock_decode_tail_cycles:
+    if results["custom_decode_dst"] != results["stock_decode_dst"]:
         raise AssertionError(
-            f"custom decode_tail cycles differ: custom={custom_decode_tail_cycles}, stock={stock_decode_tail_cycles}"
+            f"custom decode_dst cycles differ: custom={results['custom_decode_dst']}, stock={results['stock_decode_dst']}"
         )
+    if results["custom_pack"] != results["stock_pack"]:
+        raise AssertionError(f"custom pack cycles differ: custom={results['custom_pack']}, stock={results['stock_pack']}")
+    if results["custom_decode_tail"] != results["stock_decode_tail"]:
+        raise AssertionError(
+            f"custom decode_tail cycles differ: custom={results['custom_decode_tail']}, stock={results['stock_decode_tail']}"
+        )
+
+
+def verify(stock: bytes, custom: bytes) -> dict[str, int]:
+    assert_pinned_bytes(stock, "stock")
+    assert_pinned_bytes(custom, "custom")
+    assert_entry_point_signatures(stock, "stock")
+    assert_entry_point_signatures(custom, "custom")
+    results = measure_cycles(stock, custom)
+    assert_cycles(results)
+    return results
+
+
+def main() -> None:
+    stock = STOCK_ROM.read_bytes()
+    custom = CUSTOM_ROM.read_bytes()
+    results = verify(stock, custom)
 
     print("PASS: signature bytes and critical path cycle counts verified")
     print(
         "  "
-        f"sync={custom_sync_cycles}, mismatch={custom_mismatch_cycles}, "
-        f"sync_spins={custom_sync_spin_cycles}, "
-        f"decode_0300={custom_decode_0300_cycles}, decode_dst={custom_decode_dst_cycles}, "
-        f"decode_tail={custom_decode_tail_cycles}, pack={custom_pack_cycles}"
+        f"sync={results['custom_sync']}, mismatch={results['custom_mismatch']}, "
+        f"sync_spins={results['custom_sync_spins']}, "
+        f"decode_0300={results['custom_decode_0300']}, decode_dst={results['custom_decode_dst']}, "
+        f"decode_tail={results['custom_decode_tail']}, pack={results['custom_pack']}"
     )
 
 
