@@ -10,7 +10,6 @@ from __future__ import annotations
 from dataclasses import dataclass
 from pathlib import Path
 
-
 ROM_BASE = 0xC600
 
 STOCK_ROM = Path("ROMS/DISKII_P6_STOCK.rom")
@@ -68,18 +67,42 @@ def branch(cpu: Cpu, taken: bool, offset: int) -> None:
         cpu.cycles += 1
 
 
-def run_path(rom: bytes, start_off: int, stop_off: int, c08c_reads: list[int], max_steps: int = 10000) -> int:
+def run_path(
+    rom: bytes,
+    start_off: int,
+    stop_off: int,
+    c08c_reads: list[int],
+    *,
+    init_a: int = 0,
+    init_x: int = 0,
+    init_y: int = 0,
+    init_sp: int = 0xFF,
+    init_p: int = 0x20,
+    init_mem: dict[int, int] | None = None,
+    c08c_default: int = 0x80,
+    max_steps: int = 10000,
+) -> int:
     mem = [0] * 65536
     for i, b in enumerate(rom):
         mem[ROM_BASE + i] = b
+    if init_mem:
+        for addr, val in init_mem.items():
+            mem[addr & 0xFFFF] = val & 0xFF
     read_queue = list(c08c_reads)
-    cpu = Cpu(pc=ROM_BASE + start_off, x=0)
+    cpu = Cpu(
+        a=init_a & 0xFF,
+        x=init_x & 0xFF,
+        y=init_y & 0xFF,
+        sp=init_sp & 0xFF,
+        pc=ROM_BASE + start_off,
+        p=init_p & 0xFF,
+    )
 
     def rd(addr: int) -> int:
         if addr == 0xC08C:
             if read_queue:
                 return read_queue.pop(0) & 0xFF
-            return 0x80
+            return c08c_default & 0xFF
         return mem[addr & 0xFFFF]
 
     def wr(addr: int, val: int) -> None:
@@ -103,8 +126,43 @@ def run_path(rom: bytes, start_off: int, stop_off: int, c08c_reads: list[int], m
             cpu.cycles += 3
         elif op == 0x28:  # PLP
             cpu.sp = (cpu.sp + 1) & 0xFF
-            cpu.p = (rd(0x100 + cpu.sp) | 0x20) & 0xEF  # keep bit5, clear break in live P
+            cpu.p = (rd(0x100 + cpu.sp) | 0x20) & 0xEF
             cpu.cycles += 4
+        elif op == 0xA0:  # LDY #imm
+            cpu.y = rd(cpu.pc)
+            cpu.pc = (cpu.pc + 1) & 0xFFFF
+            cpu.set_nz(cpu.y)
+            cpu.cycles += 2
+        elif op == 0xA2:  # LDX #imm
+            cpu.x = rd(cpu.pc)
+            cpu.pc = (cpu.pc + 1) & 0xFFFF
+            cpu.set_nz(cpu.x)
+            cpu.cycles += 2
+        elif op == 0xA4:  # LDY zp
+            zp = rd(cpu.pc)
+            cpu.pc = (cpu.pc + 1) & 0xFFFF
+            cpu.y = rd(zp)
+            cpu.set_nz(cpu.y)
+            cpu.cycles += 3
+        elif op == 0xA5:  # LDA zp
+            zp = rd(cpu.pc)
+            cpu.pc = (cpu.pc + 1) & 0xFFFF
+            cpu.a = rd(zp)
+            cpu.set_nz(cpu.a)
+            cpu.cycles += 3
+        elif op == 0xA6:  # LDX zp
+            zp = rd(cpu.pc)
+            cpu.pc = (cpu.pc + 1) & 0xFFFF
+            cpu.x = rd(zp)
+            cpu.set_nz(cpu.x)
+            cpu.cycles += 3
+        elif op == 0x2A:  # ROL A
+            c_in = cpu.c()
+            c_out = 1 if (cpu.a & 0x80) else 0
+            cpu.a = ((cpu.a << 1) & 0xFF) | c_in
+            cpu.set_c(c_out != 0)
+            cpu.set_nz(cpu.a)
+            cpu.cycles += 2
         elif op == 0xBD:  # LDA abs,X
             lo = rd(cpu.pc)
             hi = rd(cpu.pc + 1)
@@ -116,11 +174,85 @@ def run_path(rom: bytes, start_off: int, stop_off: int, c08c_reads: list[int], m
             cpu.cycles += 4
             if (base & 0xFF00) != (addr & 0xFF00):
                 cpu.cycles += 1
+        elif op == 0xBC:  # LDY abs,X
+            lo = rd(cpu.pc)
+            hi = rd(cpu.pc + 1)
+            cpu.pc = (cpu.pc + 2) & 0xFFFF
+            base = (hi << 8) | lo
+            addr = (base + cpu.x) & 0xFFFF
+            cpu.y = rd(addr)
+            cpu.set_nz(cpu.y)
+            cpu.cycles += 4
+            if (base & 0xFF00) != (addr & 0xFF00):
+                cpu.cycles += 1
+        elif op == 0xB1:  # LDA (zp),Y
+            zp = rd(cpu.pc)
+            cpu.pc = (cpu.pc + 1) & 0xFFFF
+            lo = rd(zp)
+            hi = rd((zp + 1) & 0xFF)
+            base = (hi << 8) | lo
+            addr = (base + cpu.y) & 0xFFFF
+            cpu.a = rd(addr)
+            cpu.set_nz(cpu.a)
+            cpu.cycles += 5
+            if (base & 0xFF00) != (addr & 0xFF00):
+                cpu.cycles += 1
         elif op == 0x49:  # EOR #imm
             v = rd(cpu.pc)
             cpu.pc = (cpu.pc + 1) & 0xFFFF
             cpu.a = (cpu.a ^ v) & 0xFF
             cpu.set_nz(cpu.a)
+            cpu.cycles += 2
+        elif op == 0x59:  # EOR abs,Y
+            lo = rd(cpu.pc)
+            hi = rd(cpu.pc + 1)
+            cpu.pc = (cpu.pc + 2) & 0xFFFF
+            base = (hi << 8) | lo
+            addr = (base + cpu.y) & 0xFFFF
+            cpu.a = (cpu.a ^ rd(addr)) & 0xFF
+            cpu.set_nz(cpu.a)
+            cpu.cycles += 4
+            if (base & 0xFF00) != (addr & 0xFF00):
+                cpu.cycles += 1
+        elif op == 0x5E:  # LSR abs,X
+            lo = rd(cpu.pc)
+            hi = rd(cpu.pc + 1)
+            cpu.pc = (cpu.pc + 2) & 0xFFFF
+            addr = (((hi << 8) | lo) + cpu.x) & 0xFFFF
+            v = rd(addr)
+            cpu.set_c((v & 0x01) != 0)
+            v = (v >> 1) & 0xFF
+            wr(addr, v)
+            cpu.set_nz(v)
+            cpu.cycles += 7
+        elif op == 0x84:  # STY zp
+            zp = rd(cpu.pc)
+            cpu.pc = (cpu.pc + 1) & 0xFFFF
+            wr(zp, cpu.y)
+            cpu.cycles += 3
+        elif op == 0x88:  # DEY
+            cpu.y = (cpu.y - 1) & 0xFF
+            cpu.set_nz(cpu.y)
+            cpu.cycles += 2
+        elif op == 0x91:  # STA (zp),Y
+            zp = rd(cpu.pc)
+            cpu.pc = (cpu.pc + 1) & 0xFFFF
+            lo = rd(zp)
+            hi = rd((zp + 1) & 0xFF)
+            base = (hi << 8) | lo
+            addr = (base + cpu.y) & 0xFFFF
+            wr(addr, cpu.a)
+            cpu.cycles += 6
+        elif op == 0x99:  # STA abs,Y
+            lo = rd(cpu.pc)
+            hi = rd(cpu.pc + 1)
+            cpu.pc = (cpu.pc + 2) & 0xFFFF
+            addr = (((hi << 8) | lo) + cpu.y) & 0xFFFF
+            wr(addr, cpu.a)
+            cpu.cycles += 5
+        elif op == 0xC8:  # INY
+            cpu.y = (cpu.y + 1) & 0xFF
+            cpu.set_nz(cpu.y)
             cpu.cycles += 2
         elif op == 0xC9:  # CMP #imm
             v = rd(cpu.pc)
@@ -129,24 +261,53 @@ def run_path(rom: bytes, start_off: int, stop_off: int, c08c_reads: list[int], m
             cpu.set_c(cpu.a >= v)
             cpu.set_nz(t & 0xFF)
             cpu.cycles += 2
-        elif op == 0xEA:  # NOP
+        elif op == 0xCD:  # CMP abs
+            lo = rd(cpu.pc)
+            hi = rd(cpu.pc + 1)
+            cpu.pc = (cpu.pc + 2) & 0xFFFF
+            v = rd((hi << 8) | lo)
+            t = (cpu.a - v) & 0x1FF
+            cpu.set_c(cpu.a >= v)
+            cpu.set_nz(t & 0xFF)
+            cpu.cycles += 4
+        elif op == 0xCA:  # DEX
+            cpu.x = (cpu.x - 1) & 0xFF
+            cpu.set_nz(cpu.x)
             cpu.cycles += 2
-        elif op == 0x10:  # BPL
-            off = rd(cpu.pc)
-            cpu.pc = (cpu.pc + 1) & 0xFFFF
-            branch(cpu, cpu.n() == 0, off)
         elif op == 0xD0:  # BNE
             off = rd(cpu.pc)
             cpu.pc = (cpu.pc + 1) & 0xFFFF
             branch(cpu, cpu.z() == 0, off)
+        elif op == 0xE6:  # INC zp
+            zp = rd(cpu.pc)
+            cpu.pc = (cpu.pc + 1) & 0xFFFF
+            v = (rd(zp) + 1) & 0xFF
+            wr(zp, v)
+            cpu.set_nz(v)
+            cpu.cycles += 5
+        elif op == 0xEA:  # NOP
+            cpu.cycles += 2
         elif op == 0xF0:  # BEQ
             off = rd(cpu.pc)
             cpu.pc = (cpu.pc + 1) & 0xFFFF
             branch(cpu, cpu.z() != 0, off)
+        elif op == 0x10:  # BPL
+            off = rd(cpu.pc)
+            cpu.pc = (cpu.pc + 1) & 0xFFFF
+            branch(cpu, cpu.n() == 0, off)
+        elif op == 0x30:  # BMI
+            off = rd(cpu.pc)
+            cpu.pc = (cpu.pc + 1) & 0xFFFF
+            branch(cpu, cpu.n() != 0, off)
         elif op == 0x90:  # BCC
             off = rd(cpu.pc)
             cpu.pc = (cpu.pc + 1) & 0xFFFF
             branch(cpu, cpu.c() == 0, off)
+        elif op == 0x4C:  # JMP abs
+            lo = rd(cpu.pc)
+            hi = rd(cpu.pc + 1)
+            cpu.pc = ((hi << 8) | lo) & 0xFFFF
+            cpu.cycles += 3
         else:
             raise RuntimeError(f"unsupported opcode ${op:02X} at ${((cpu.pc - 1) & 0xFFFF):04X}")
 
@@ -169,40 +330,71 @@ def main() -> None:
     assert_pinned_bytes(stock, "stock")
     assert_pinned_bytes(custom, "custom")
 
-    # Critical path 1:
-    # Sync prologue path: find D5,AA,96 and reach LFF83 (offset $83).
-    # Entry at Cn5C.
-    sync_reads = [0xD5, 0xAA, 0x96]
-    stock_sync_cycles = run_path(stock, 0x5C, 0x83, sync_reads)
-    custom_sync_cycles = run_path(custom, 0x5C, 0x83, sync_reads)
+    # Critical path 1: sync prologue (Cn5C -> Cn83)
+    stock_sync_cycles = run_path(stock, 0x5C, 0x83, [0xD5, 0xAA, 0x96])
+    custom_sync_cycles = run_path(custom, 0x5C, 0x83, [0xD5, 0xAA, 0x96])
 
-    # Critical path 2:
-    # Mismatch recovery path: D5,AA,AD should pop flags and branch back to Cn5C.
-    mismatch_reads = [0xD5, 0xAA, 0xAD]
-    stock_mismatch_cycles = run_path(stock, 0x5D, 0x5C, mismatch_reads)
-    custom_mismatch_cycles = run_path(custom, 0x5D, 0x5C, mismatch_reads)
+    # Critical path 2: mismatch recovery (Cn5D -> Cn5C)
+    stock_mismatch_cycles = run_path(stock, 0x5D, 0x5C, [0xD5, 0xAA, 0xAD])
+    custom_mismatch_cycles = run_path(custom, 0x5D, 0x5C, [0xD5, 0xAA, 0xAD])
 
-    # Fixed cycle expectations from the reference stock ROM.
-    EXPECT_SYNC = 38
-    EXPECT_MISMATCH = 42
+    # Critical path 3: decode to $0300 buffer (CnA6 -> CnBA)
+    stock_decode_0300_cycles = run_path(stock, 0xA6, 0xBA, [0x80] * 0x56, init_x=0, init_a=0)
+    custom_decode_0300_cycles = run_path(custom, 0xA6, 0xBA, [0x80] * 0x56, init_x=0, init_a=0)
 
-    if stock_sync_cycles != EXPECT_SYNC:
-        raise AssertionError(f"stock sync cycles changed: {stock_sync_cycles} != {EXPECT_SYNC}")
-    if stock_mismatch_cycles != EXPECT_MISMATCH:
-        raise AssertionError(f"stock mismatch cycles changed: {stock_mismatch_cycles} != {EXPECT_MISMATCH}")
+    # Critical path 4: decode/store to ($26),Y buffer (CnBA -> CnCB)
+    init_ptr = {0x26: 0x00, 0x27: 0x04}
+    stock_decode_dst_cycles = run_path(stock, 0xBA, 0xCB, [0x80] * 0x100, init_x=0, init_a=0, init_y=0, init_mem=init_ptr)
+    custom_decode_dst_cycles = run_path(custom, 0xBA, 0xCB, [0x80] * 0x100, init_x=0, init_a=0, init_y=0, init_mem=init_ptr)
+
+    # Critical path 5: bit-pack loop pass (CnD7 -> CnD3)
+    init_pack = {0x26: 0x00, 0x27: 0x04, 0x3D: 0x00, 0x0800: 0xFF, 0x2B: 0x00}
+    stock_pack_cycles = run_path(stock, 0xD7, 0xD3, [], init_mem=init_pack, max_steps=500000)
+    custom_pack_cycles = run_path(custom, 0xD7, 0xD3, [], init_mem=init_pack, max_steps=500000)
+
+    expected = {
+        "sync": 38,
+        "mismatch": 42,
+        "decode_0300": 2323,
+        "decode_dst": 7167,
+        "pack": 9766,
+    }
+
+    if stock_sync_cycles != expected["sync"]:
+        raise AssertionError(f"stock sync cycles changed: {stock_sync_cycles} != {expected['sync']}")
+    if stock_mismatch_cycles != expected["mismatch"]:
+        raise AssertionError(f"stock mismatch cycles changed: {stock_mismatch_cycles} != {expected['mismatch']}")
+    if stock_decode_0300_cycles != expected["decode_0300"]:
+        raise AssertionError(
+            f"stock decode_0300 cycles changed: {stock_decode_0300_cycles} != {expected['decode_0300']}"
+        )
+    if stock_decode_dst_cycles != expected["decode_dst"]:
+        raise AssertionError(
+            f"stock decode_dst cycles changed: {stock_decode_dst_cycles} != {expected['decode_dst']}"
+        )
+    if stock_pack_cycles != expected["pack"]:
+        raise AssertionError(f"stock pack cycles changed: {stock_pack_cycles} != {expected['pack']}")
 
     if custom_sync_cycles != stock_sync_cycles:
-        raise AssertionError(
-            f"custom sync cycles differ: custom={custom_sync_cycles}, stock={stock_sync_cycles}"
-        )
+        raise AssertionError(f"custom sync cycles differ: custom={custom_sync_cycles}, stock={stock_sync_cycles}")
     if custom_mismatch_cycles != stock_mismatch_cycles:
+        raise AssertionError(f"custom mismatch cycles differ: custom={custom_mismatch_cycles}, stock={stock_mismatch_cycles}")
+    if custom_decode_0300_cycles != stock_decode_0300_cycles:
         raise AssertionError(
-            f"custom mismatch cycles differ: custom={custom_mismatch_cycles}, stock={stock_mismatch_cycles}"
+            f"custom decode_0300 cycles differ: custom={custom_decode_0300_cycles}, stock={stock_decode_0300_cycles}"
         )
+    if custom_decode_dst_cycles != stock_decode_dst_cycles:
+        raise AssertionError(
+            f"custom decode_dst cycles differ: custom={custom_decode_dst_cycles}, stock={stock_decode_dst_cycles}"
+        )
+    if custom_pack_cycles != stock_pack_cycles:
+        raise AssertionError(f"custom pack cycles differ: custom={custom_pack_cycles}, stock={stock_pack_cycles}")
 
     print("PASS: signature bytes and critical path cycle counts verified")
     print(
-        f"  sync_path_cycles={custom_sync_cycles}, mismatch_path_cycles={custom_mismatch_cycles}"
+        "  "
+        f"sync={custom_sync_cycles}, mismatch={custom_mismatch_cycles}, "
+        f"decode_0300={custom_decode_0300_cycles}, decode_dst={custom_decode_dst_cycles}, pack={custom_pack_cycles}"
     )
 
 
