@@ -1,0 +1,3 @@
+[submodule "testing/ever2e-py"]
+	path = testing/ever2e-py
+	url = https://github.com/ethereal-esthesia/ever2e-py.git
