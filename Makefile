@@ -25,7 +25,7 @@ MAP := $(OUT_DIR)/EVER2E.map
 LBL := $(OUT_DIR)/EVER2E.lbl
 CHECKSUM_FILE := $(ROM_DIR)/checksum.txt
 
-.PHONY: all build run clean toolcheck
+.PHONY: all build run clean toolcheck test-p6
 
 all: build
 
@@ -64,6 +64,9 @@ build: toolcheck $(ROM) $(CHECKSUM_FILE)
 
 run: build
 	cd $(JVM_DIR) && ./gradlew run --args="$(PROFILE) $(ARGS)"
+
+test-p6:
+	python3 $(ROOT)scripts/test_diskii_p6_rom.py
 
 clean:
 	rm -rf $(OUT_DIR)
