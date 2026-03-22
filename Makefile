@@ -30,7 +30,7 @@ MAP := $(OUT_DIR)/EVER2E.map
 LBL := $(OUT_DIR)/EVER2E.lbl
 CHECKSUM_FILE := $(ROM_DIR)/checksum.txt
 
-.PHONY: all build run clean toolcheck test-p6
+.PHONY: all build run clean toolcheck test-p6 p6-roms
 
 all: build
 
@@ -62,6 +62,7 @@ $(CHECKSUM_FILE): $(ROM) | $(ROM_DIR)
 	} > "$(CHECKSUM_FILE)"
 
 build: toolcheck $(ROM) $(CHECKSUM_FILE)
+	@$(MAKE) p6-roms
 	@echo "built: $(ROM)"
 	@echo "map:   $(MAP)"
 	@echo "labels:$(LBL)"
@@ -72,8 +73,13 @@ run: build
 
 .PHONY: test-p6-precheck test-p6-py test-p6-jvm
 
+p6-roms: | $(ROM_DIR)
+	python3 scripts/build_diskii_p6_custom.py \
+		--out "$(ROM_DIR)/DISKII_P6_CUSTOM.rom" \
+		--stock-out "$(ROM_DIR)/DISKII_P6_STOCK.rom"
+
 # Fast local guardrail.
-test-p6-precheck:
+test-p6-precheck: p6-roms
 	python3 -m unittest tests.test_diskii_p6_entrypoints
 
 # Python-side fixture + output/timing report.
