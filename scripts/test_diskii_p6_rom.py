@@ -25,6 +25,10 @@ PINNED_BYTES = {
     0xFF: 0x00,  # 16-sector style.
 }
 
+# Treat the first 8 bytes as a compact controller fingerprint.
+# This includes the classic ProDOS-identifying bytes at $01/$03/$05/$07.
+PRODOS_FINGERPRINT_00_07 = [0xA2, 0x20, 0xA0, 0x00, 0xA2, 0x03, 0x86, 0x3C]
+
 # Useful entry points we rely on for compatibility checks and timing tests.
 # We pin short leading byte signatures to spot accidental regressions.
 ENTRY_POINT_SIGNATURES = {
@@ -357,6 +361,16 @@ def assert_entry_point_signatures(rom: bytes, name: str) -> None:
             )
 
 
+def assert_prodos_fingerprint(rom: bytes, name: str) -> None:
+    got = list(rom[0x00:0x08])
+    if got != PRODOS_FINGERPRINT_00_07:
+        raise AssertionError(
+            f"{name}: ProDOS fingerprint $00..$07 changed: "
+            f"expected {[f'${v:02X}' for v in PRODOS_FINGERPRINT_00_07]}, "
+            f"got {[f'${v:02X}' for v in got]}"
+        )
+
+
 def measure_cycles(stock: bytes, custom: bytes) -> dict[str, int]:
     out: dict[str, int] = {}
 
@@ -445,6 +459,8 @@ def assert_cycles(results: dict[str, int]) -> None:
 def verify(stock: bytes, custom: bytes) -> dict[str, int]:
     assert_pinned_bytes(stock, "stock")
     assert_pinned_bytes(custom, "custom")
+    assert_prodos_fingerprint(stock, "stock")
+    assert_prodos_fingerprint(custom, "custom")
     assert_entry_point_signatures(stock, "stock")
     assert_entry_point_signatures(custom, "custom")
     results = measure_cycles(stock, custom)
