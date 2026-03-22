@@ -8,6 +8,9 @@ PROFILE := $(ROOT)profiles/Apple2eEver2eBootLoopNoSlots.emu
 JVM_DIR ?= /Users/shane/app/ever2e
 JVM_P6_TEST_FILTER ?= test.cpu.Cpu65c02CycleTimingTest
 JVM_P6_DISK_FILTER ?= test.device.DiskIISlotRomSignatureTest
+PY_DIR ?= $(ROOT)testing/ever2e-py
+P6_PY_STRICT ?= 0
+P6_PY_REPORT ?= /tmp/p6_py_output_report.json
 
 ASM_SRC := \
 	$(ROOT)asm/main.asm \
@@ -67,11 +70,24 @@ build: toolcheck $(ROM) $(CHECKSUM_FILE)
 run: build
 	cd $(JVM_DIR) && ./gradlew run --args="$(PROFILE) $(ARGS)"
 
-.PHONY: test-p6-precheck test-p6-jvm
+.PHONY: test-p6-precheck test-p6-py test-p6-jvm
 
 # Fast local guardrail.
 test-p6-precheck:
 	python3 -m unittest tests.test_diskii_p6_entrypoints
+
+# Python-side fixture + output/timing report.
+test-p6-py:
+	@if [ -d "$(PY_DIR)" ]; then \
+		cd $(PY_DIR) && python3 -m unittest tests.test_bootstrap_disk_fixture; \
+		cd $(PY_DIR) && if [ "$(P6_PY_STRICT)" = "1" ]; then \
+			python3 tools/check_hello_bootstrap_output.py --report "$(P6_PY_REPORT)" --strict; \
+		else \
+			python3 tools/check_hello_bootstrap_output.py --report "$(P6_PY_REPORT)"; \
+		fi; \
+	else \
+		echo "skip test-p6-py: $(PY_DIR) not present"; \
+	fi
 
 # Authoritative gate: JVM regression suite.
 test-p6-jvm:
@@ -82,7 +98,7 @@ test-p6-jvm:
 	fi
 
 # One command runs both, in order.
-test-p6: test-p6-precheck test-p6-jvm
+test-p6: test-p6-precheck test-p6-py test-p6-jvm
 
 clean:
 	rm -rf $(OUT_DIR)

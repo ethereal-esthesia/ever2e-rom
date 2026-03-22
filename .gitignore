@@ -9,3 +9,17 @@ nvram/
 
 # Logs
 *.log
+
+# Python cache/artifacts
+**/__pycache__/
+*.py[cod]
+
+# Local helper link to external docs (not tracked here)
+docs/ever2e-cpp-docs
+
+# ROM binaries: keep only explicit exceptions in-repo
+ROMS/*
+!ROMS/README.md
+!ROMS/EVER2E.ROM
+!ROMS/checksum.txt
+!ROMS/DISKII_P6_CUSTOM.rom
