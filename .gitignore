@@ -16,6 +16,7 @@ nvram/
 
 # Local helper link to external docs (not tracked here)
 docs/ever2e-cpp-docs
+specs/ever2e-cpp-docs
 
 # ROM binaries: keep only explicit exceptions in-repo
 ROMS/*

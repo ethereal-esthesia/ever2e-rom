@@ -1,0 +1,62 @@
+# Disk II P6 Custom ROM Notes
+
+This repo includes validation notes for a 256-byte 5.25" Disk II
+controller ROM image compatible with the classic 16-sector P6 ROM layout.
+
+## Files
+- `scripts/test_diskii_p6_rom.py`
+- `scripts/build_diskii_p6_custom.py`
+
+Local-only artifacts (not for push):
+- stock ROM output (default): `ROMS/DISKII_P6_STOCK.rom`
+- custom ROM output (default): `ROMS/DISKII_P6_CUSTOM.rom`
+
+## Actual 5.25" ROM Image Provenance (Raw 256 Bytes)
+
+Current stock image bytes are pinned directly in:
+- `scripts/build_diskii_p6_custom.py` (`STOCK_HEX`)
+
+Deterministic fingerprint for the 256-byte stock image:
+- `SHA-256`: `de1e3e035878bab43d0af8fe38f5839c527e9548647036598ee6fe7ec74d2a7d`
+- `MD5`: `2020aa1413ff77fe29353f3ee72dc295`
+
+Quick byte sanity markers:
+- First 16 bytes: `A2 20 A0 00 A2 03 86 3C 8A 0A 24 3C F0 10 05 3C`
+- Last 16 bytes: `3D CD 00 08 A6 2B 90 DB 4C 01 08 00 00 00 00 00`
+
+Build/recreate artifacts:
+```bash
+python3 scripts/build_diskii_p6_custom.py
+```
+
+Verify artifact hash:
+```bash
+shasum -a 256 ROMS/DISKII_P6_STOCK.rom
+```
+
+Note:
+- `DISKII_P6_STOCK.rom` should be treated as a local reference artifact only.
+- Do not commit/push stock ROM binaries; regenerate locally from `STOCK_HEX` when needed.
+
+## Compatibility Signature Bytes
+Commonly checked Disk II/ProDOS signature bytes to preserve during refactors:
+
+- offset `$01` = `$20`
+- offset `$03` = `$00`
+- offset `$05` = `$03`
+- offset `$07` = `$3C`
+- offset `$FF` = `$00` (16-sector Disk II style)
+
+## Verify (ID Bytes + Cycle Paths)
+```bash
+scripts/test_diskii_p6_rom.py
+```
+
+This test checks:
+- pinned compatibility bytes (`$01,$03,$05,$07,$FF`)
+- cycle counts for two timing-sensitive sync/mismatch paths
+- stock vs custom cycle parity on those paths
+
+## Current Status
+- Validation focuses on signature bytes plus timing-sensitive path parity.
+- The boot/read loops are cycle-critical, so internal edits should be paired with these checks.
