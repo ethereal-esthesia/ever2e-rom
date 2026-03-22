@@ -18,7 +18,5 @@ nvram/
 docs/ever2e-cpp-docs
 specs/ever2e-cpp-docs
 
-# ROM binaries: keep only explicit exceptions in-repo
-ROMS/*
-!ROMS/README.md
-!ROMS/checksum.txt
+# Build-generated ROM outputs
+ROMS/
