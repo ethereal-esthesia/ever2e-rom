@@ -21,6 +21,4 @@ specs/ever2e-cpp-docs
 # ROM binaries: keep only explicit exceptions in-repo
 ROMS/*
 !ROMS/README.md
-!ROMS/EVER2E.ROM
 !ROMS/checksum.txt
-!ROMS/DISKII_P6_CUSTOM.rom
