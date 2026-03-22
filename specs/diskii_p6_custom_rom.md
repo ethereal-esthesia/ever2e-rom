@@ -6,10 +6,14 @@ controller ROM image compatible with the classic 16-sector P6 ROM layout.
 ## Files
 - `scripts/test_diskii_p6_rom.py`
 - `scripts/build_diskii_p6_custom.py`
+- `tests/test_diskii_p6_entrypoints.py`
+- `specs/roms_build_outputs.md`
 
 Local-only artifacts (not for push):
 - stock ROM output (default): `ROMS/DISKII_P6_STOCK.rom`
 - custom ROM output (default): `ROMS/DISKII_P6_CUSTOM.rom`
+
+`ROMS/` is a generated build-output folder and is ignored by git.
 
 ## Actual 5.25" ROM Image Provenance (Raw 256 Bytes)
 
@@ -54,9 +58,20 @@ scripts/test_diskii_p6_rom.py
 
 This test checks:
 - pinned compatibility bytes (`$01,$03,$05,$07,$FF`)
-- cycle counts for two timing-sensitive sync/mismatch paths
+- entry-point signature bytes for boot/sync/decode/pack paths
+- cycle counts for timing-sensitive paths (`sync`, `mismatch`, `sync_spins`,
+  `decode_0300`, `decode_dst`, `pack`, `decode_tail`)
 - stock vs custom cycle parity on those paths
 
 ## Current Status
-- Validation focuses on signature bytes plus timing-sensitive path parity.
+- Validation focuses on signature bytes, entry-point signatures, and timing parity.
 - The boot/read loops are cycle-critical, so internal edits should be paired with these checks.
+- Current custom image matches pinned stock bytes (`0/256 changed`, `0.0%`).
+
+## Checklist
+- [x] Pin stock 256-byte image in source (`STOCK_HEX`).
+- [x] Keep ProDOS-visible signature bytes fixed (`$01,$03,$05,$07,$FF`).
+- [x] Keep stock/custom ROM binaries local-only (not tracked in git).
+- [x] Validate entry-point signatures and cycle parity via `scripts/test_diskii_p6_rom.py`.
+- [x] Cover the same expectations from `unittest` (`tests/test_diskii_p6_entrypoints.py`).
+- [ ] Add broader boot-path regression capture (for example, full RWTS read flow traces).
