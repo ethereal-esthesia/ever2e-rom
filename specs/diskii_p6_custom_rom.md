@@ -58,6 +58,7 @@ scripts/test_diskii_p6_rom.py
 
 This test checks:
 - pinned compatibility bytes (`$01,$03,$05,$07,$FF`)
+- ProDOS fingerprint bytes (`$00..$07`)
 - entry-point signature bytes for boot/sync/decode/pack paths
 - cycle counts for timing-sensitive paths (`sync`, `mismatch`, `sync_spins`,
   `decode_0300`, `decode_dst`, `pack`, `decode_tail`)
@@ -71,7 +72,17 @@ This test checks:
 ## Checklist
 - [x] Pin stock 256-byte image in source (`STOCK_HEX`).
 - [x] Keep ProDOS-visible signature bytes fixed (`$01,$03,$05,$07,$FF`).
+- [x] Treat `$00..$07` as a pinned ProDOS/controller fingerprint.
 - [x] Keep stock/custom ROM binaries local-only (not tracked in git).
 - [x] Validate entry-point signatures and cycle parity via `scripts/test_diskii_p6_rom.py`.
 - [x] Cover the same expectations from `unittest` (`tests/test_diskii_p6_entrypoints.py`).
 - [ ] Add broader boot-path regression capture (for example, full RWTS read flow traces).
+
+## Entry-Point Checklist
+- [x] `$00` boot entry signature (`A2 20 A0 00 A2 03 86 3C`)
+- [ ] `$5C` sync prologue signature
+- [ ] `$5D` sync mismatch recovery signature
+- [ ] `$A6` decode-to-`$0300` entry signature
+- [ ] `$BA` decode-to-`($26),Y` entry signature
+- [ ] `$CB` decode tail entry signature
+- [ ] `$D7` bit-pack loop entry signature
