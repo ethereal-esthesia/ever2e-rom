@@ -27,8 +27,7 @@ class TestDiskIIP6EntryPoints(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
         cls.mod = _load_verify_module()
-        cls.stock = (ROOT / "ROMS" / "DISKII_P6_STOCK.rom").read_bytes()
-        cls.custom = (ROOT / "ROMS" / "DISKII_P6_CUSTOM.rom").read_bytes()
+        cls.stock, cls.custom = cls.mod.load_rom_pair()
 
     def test_entry_point_signatures_are_pinned(self):
         self.mod.assert_entry_point_signatures(self.stock, "stock")
