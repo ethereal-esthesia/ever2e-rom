@@ -84,13 +84,15 @@ test-p6-precheck: p6-roms
 
 # Python-side fixture + output/timing report.
 test-p6-py:
-	@if [ -d "$(PY_DIR)" ]; then \
-		cd $(PY_DIR) && python3 -m unittest tests.test_bootstrap_disk_fixture; \
+	@if [ -d "$(PY_DIR)" ] && [ -d "$(PY_DIR)/tests" ] && [ -f "$(PY_DIR)/tools/check_hello_bootstrap_output.py" ]; then \
+		cd $(PY_DIR) && python3 -m unittest discover -s tests -p 'test_bootstrap_disk_fixture.py'; \
 		cd $(PY_DIR) && if [ "$(P6_PY_STRICT)" = "1" ]; then \
 			python3 tools/check_hello_bootstrap_output.py --report "$(P6_PY_REPORT)" --strict; \
 		else \
 			python3 tools/check_hello_bootstrap_output.py --report "$(P6_PY_REPORT)"; \
 		fi; \
+	elif [ -d "$(PY_DIR)" ]; then \
+		echo "skip test-p6-py: required files not found under $(PY_DIR)"; \
 	else \
 		echo "skip test-p6-py: $(PY_DIR) not present"; \
 	fi
