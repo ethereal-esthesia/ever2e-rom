@@ -187,7 +187,16 @@ This document defines what is needed to make that practical and debuggable on a 
 - Keep explicit per-slice cycle budgets and overrun accounting counters.
 - Define a fixed-offset shared state block for resumable slice state.
 
-8. **Clock accuracy policy (no audio card present)**
+8. **Variable key repeat (OS policy)**
+- Add kernel-managed variable key repeat so applications get consistent behavior independent of firmware defaults.
+- Policy should expose at least:
+  - repeat delay (initial hold time)
+  - repeat rate (repeat interval)
+  - per-app override capability (with system default fallback)
+- Repeat generation must run in `input_slice` on the same master scheduler timeline as audio/display commit slices.
+- Invalid or out-of-range repeat settings must clamp to safe defaults rather than disabling keyboard input.
+
+9. **Clock accuracy policy (no audio card present)**
 - When no Mockingboard/audio card backend is present, maintain a kernel-owned accurate master clock and drive speaker fallback from that clock.
 - Speaker fallback cadence must remain phase-accurate to the same scheduler timeline used by paging/input slices.
 - Absence of external audio hardware must not relax checkpoint timing guarantees.
