@@ -20,3 +20,6 @@ specs/ever2e-cpp-docs
 
 # Build-generated ROM outputs
 ROMS/
+
+# Local scratch/imported artifacts
+local/
