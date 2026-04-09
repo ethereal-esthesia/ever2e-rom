@@ -20,7 +20,6 @@ MAIN_DEMO_PIXEL_X_COORDINATE = $0C00
 MAIN_DEMO_PIXEL_Y_COORDINATE = $0C01
 
 main_loop:
-    jsr main_show_startup_banner
     stz MAIN_DEMO_PIXEL_X_COORDINATE
     stz MAIN_DEMO_PIXEL_Y_COORDINATE
 
@@ -91,7 +90,7 @@ main_loop:
 ; Clobbers:  A, X, Y, flags
 ; Returns:   RTS
 main_show_startup_banner:
-    lda #(DISPLAY_80STORE | DISPLAY_80COL)
+    lda #(DISPLAY_80STORE | DISPLAY_80COL | DISPLAY_ALTCHARSET)
     jsr display_set
     lda #INVFLG_INVERSE
     sta INVFLG
