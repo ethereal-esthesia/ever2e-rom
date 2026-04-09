@@ -195,6 +195,9 @@ This repo is wired for a fast `ca65/ld65` loop targeting Apple IIe 16KB ROM imag
   - the xorshift seed becomes `(high seed byte XOR normalized first Weyl output)`
   - if that derived xorshift seed would be `0`, the helper substitutes `$01` so
     the xorshift state never enters its invalid all-zero state
+  - the accepted 16-bit user seed is recorded at:
+    - `RNG_LAST_SEED_LO_MAIN_RAM = $0C10`
+    - `RNG_LAST_SEED_HI_MAIN_RAM = $0C11`
 - Output entry:
   - `rng_next_mixed_a`: returns `A = (Weyl byte XOR xorshift byte)`
 

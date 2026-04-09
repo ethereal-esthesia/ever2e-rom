@@ -6,8 +6,6 @@
 .include "display.inc"
 .include "rng.inc"
 
-RNG_SEQUENCE_TEST_SEED_LO              = $00
-RNG_SEQUENCE_TEST_SEED_HI              = $00
 RNG_SEQUENCE_TEST_FIRST_BYTE_0        = $0C20
 RNG_SEQUENCE_TEST_FIRST_BYTE_1        = $0C21
 RNG_SEQUENCE_TEST_FIRST_BYTE_2        = $0C22
@@ -32,9 +30,7 @@ reset:
     jsr display_text_clear_visible
     jsr display_text_home
 
-    lda #RNG_SEQUENCE_TEST_SEED_LO
-    ldx #RNG_SEQUENCE_TEST_SEED_HI
-    jsr rng_seed_ax
+    jsr rng_seed_from_vbl
 
     jsr rng_next_mixed_a
     sta RNG_SEQUENCE_TEST_FIRST_BYTE_0
@@ -110,9 +106,9 @@ reset:
     ldx #>rng_sequence_test_seed_text
     ldy #$00
     jsr rng_sequence_test_print_string_ax
-    lda #RNG_SEQUENCE_TEST_SEED_HI
+    lda RNG_LAST_SEED_HI_MAIN_RAM
     jsr rng_sequence_test_text_put_hex_byte_a
-    lda #RNG_SEQUENCE_TEST_SEED_LO
+    lda RNG_LAST_SEED_LO_MAIN_RAM
     jsr rng_sequence_test_text_put_hex_byte_a
     inc CV
 
