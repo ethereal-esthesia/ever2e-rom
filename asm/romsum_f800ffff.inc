@@ -15,9 +15,19 @@
 ; - Prints a newline, then the high byte and low byte in hex via monitor ROM.
 ; - Prints a trailing newline and returns with RTS.
 ;
-; Clobbers: A, Y, flags, ROMSUM_* zero-page slots from `bank_switch.inc`
+; Clobbers: A, Y, flags, shared ZP scratch aliases `ROMSUM_*` from
+;           `bank_switch.inc`
 
 .include "bank_switch.inc"
+
+ROMSUM_PTR_LO       = ZP_SCRATCH_0
+ROMSUM_PTR_HI       = ZP_SCRATCH_1
+ROMSUM_SUM_LO       = ZP_SCRATCH_2
+ROMSUM_SUM_HI       = ZP_SCRATCH_3
+ROMSUM_END_LO       = ZP_SCRATCH_4
+ROMSUM_END_HI       = ZP_SCRATCH_5
+ROMSUM_BANK_STATE   = ZP_SCRATCH_6
+ROMSUM_BANK_REQUEST = ZP_SCRATCH_7
 
 MON_CROUT = $FD8E
 MON_PRBYTE = $FDDA

@@ -13,6 +13,13 @@
 .export dhgr_plot_page1
 .export dhgr_plot_page2
 
+DHGR_PAGE_HI  = ZP_SCRATCH_0
+DHGR_COLORIDX = ZP_SCRATCH_1
+DHGR_STREAM   = ZP_SCRATCH_2
+DHGR_PTR_LO   = ZP_SCRATCH_3
+DHGR_PTR_HI   = ZP_SCRATCH_4
+DHGR_PHASE    = ZP_SCRATCH_5
+
 ; dhgr_display
 ; Args:      A = page (1 or 2)
 ; Clobbers:  A, flags
@@ -37,7 +44,7 @@ dhgr_plot_page2:
 ; dhgr_plot
 ; Args:      A = color (0-15), X = x (0-139), Y = y (0-191)
 ;            C clear => page 1, C set => page 2
-; Clobbers:  A, X, Y, flags, $F6-$FB (ZP scratch), RAMRD/RAMWRT soft-switches
+; Clobbers:  A, X, Y, flags, $00-$05 (shared ZP scratch), RAMRD/RAMWRT soft-switches
 ; Returns:   RTS
 ; Notes:
 ; - Computes stream group/phase using x/7 and x%7.

@@ -15,6 +15,11 @@
 .include "get_key.inc"
 .include "reset.inc"
 
+; Keep the demo cursor in regular main RAM so $00-$0F stays available as
+; shared routine scratch.
+PIXEL_X = $0C00
+PIXEL_Y = $0C01
+
 main_loop:
     lda #$01
     jsr dhgr_display
