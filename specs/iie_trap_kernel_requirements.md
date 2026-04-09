@@ -9,6 +9,26 @@ Build a small IIe kernel that combines:
 
 This document defines what is needed to make that practical and debuggable on a 65SC02/IIe memory model.
 
+## Kernel ABI Contract (Current)
+The kernel-facing low-level ABI starts with the shared machine-state and zero-page
+contract defined in `asm/bank_switch.inc`.
+
+Current contract:
+- `$00-$0F` is a shared scratch window. Kernel/runtime routines may alias and
+  reuse it locally, but must not assume values there survive calls into other
+  routines.
+- `$FC` is persistent extended bank state in main zero page.
+- `$FD` is persistent common bank state in main zero page.
+- `$FE` is persistent display state in main zero page.
+- Bank/display transitions that participate in the shared runtime contract should
+  go through the helper layer so the tracked state bytes remain authoritative.
+- Any code that bypasses the helpers is outside the shared contract and is
+  responsible for reconciling hardware state before returning to kernel-managed
+  flow.
+
+This contract is intended to be reusable across the ROM families in this repo,
+including monitor injection ROMs, OS ROMs, and test ROMs.
+
 ## Non-Goals (for v1)
 - Preemptive multitasking
 - Full POSIX-like file/process model
