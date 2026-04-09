@@ -183,13 +183,16 @@ This repo is wired for a fast `ca65/ld65` loop targeting Apple IIe 16KB ROM imag
 - High byte: 8-bit Weyl sequence with increment `RNG_WEYL_INCREMENT = $9D`
 - Low byte: 8-bit maximal-period xorshift sequence
 - Seed entry:
-  - `rng_seed_weyl_a`: caller provides the Weyl seed in `A`
-  - `rng_seed_default`: uses Weyl seed `0`
+  - `rng_seed_ax`: caller provides a 16-bit seed with `A = low`, `X = high`
+  - `rng_seed_weyl_a`: compatibility wrapper with `X = 0`
+  - `rng_seed_default`: uses 16-bit seed `0000`
 - Seeding rule:
-  - the first Weyl return value becomes the initial xorshift seed
-  - with the default Weyl seed `0`, that first Weyl value is `$9D`
-  - if that first Weyl value would be `0`, the helper substitutes `$01` so the
-    xorshift state never enters its invalid all-zero state
+  - the low seed byte is stored as the Weyl state
+  - the helper advances Weyl once to get the first Weyl output
+  - if that first Weyl output would be `0`, it is normalized to `$01` for seeding
+  - the xorshift seed becomes `(high seed byte XOR normalized first Weyl output)`
+  - if that derived xorshift seed would be `0`, the helper substitutes `$01` so
+    the xorshift state never enters its invalid all-zero state
 - Output entry:
   - `rng_next_mixed_a`: returns `A = (Weyl byte XOR xorshift byte)`
 
