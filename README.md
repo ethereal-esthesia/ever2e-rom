@@ -215,7 +215,7 @@ That matches the stock 40-column screen-code ranges:
 | `$40-$7F` | flashing characters |
 | `$80-$FF` | normal characters |
 
-When the active character set is not MouseText/alternate text, this repo uppercases lowercase ASCII before applying flash encoding. That keeps direct text writes in the primary flashing glyph set instead of wandering into unrelated punctuation/symbol codes.
+When the active character set is not MouseText/alternate text, this repo uppercases lowercase ASCII before applying primary 40-column encoding. That keeps direct text writes in the stock uppercase-only glyph set for normal, flash, and inverse text instead of wandering into unrelated punctuation/symbol codes.
 
 #### Alternate characters and 80-column text
 - Only `INVFLG` bit 7 is meaningful there.

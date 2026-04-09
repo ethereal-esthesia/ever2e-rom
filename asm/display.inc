@@ -324,9 +324,9 @@ display_text_write_null_terminated_string_ax_y_padded:
 ; - In 80-column mode, even columns map to auxiliary text memory and odd columns
 ;   map to main text memory, matching the JVM/py display model.
 ; - Standard 40-column text uses the stock `($80 | ASCII) & INVFLG` encoding.
-; - In standard 40-column flash, lowercase ASCII is folded to uppercase before
-;   encoding because the primary flashing character range only carries the
-;   uppercase/symbol set.
+; - In standard 40-column text, lowercase ASCII is folded to uppercase before
+;   encoding because the primary character set does not provide distinct
+;   lowercase glyphs.
 ; - Alternate/80-column text uses only bit 7 of `INVFLG`; flash falls back to
 ;   inverse there because the firmware path does not support flashing text.
 ; - When alternate characters are active, inverse `@`-`_` is remapped from
@@ -349,10 +349,6 @@ display_text_write_char_clipped:
     jsr display_text_load_display_state_main
     and #DISPLAY_ALTCHARSET
     bne @encode_alternate_text
-
-    lda DISPLAY_TEXT_ATTRIBUTE_MASK
-    cmp #INVFLG_FLASH
-    bne @encode_primary_text
 
     lda DISPLAY_TEXT_SOURCE_CHARACTER
     cmp #'a'

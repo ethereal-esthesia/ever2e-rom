@@ -16,6 +16,8 @@ reset:
     jsr bank_switch_apply_common_state
     lda #DISPLAY_RESET_STATE
     jsr display_apply_state
+    lda #DISPLAY_ALTCHARSET
+    jsr display_set
     lda #INVFLG_RESET_STATE
     sta INVFLG
     jsr display_text_home
