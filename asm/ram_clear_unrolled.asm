@@ -11,7 +11,6 @@
 .setcpu "65C02"
 
 .export clear_ram_unrolled_fast
-.export fill_text_pages
 
 .segment "CODE"
 
@@ -37,20 +36,4 @@ clear_ram_unrolled_fast:
     beq @done
     jmp @xloop
 @done:
-    rts
-
-; fill_text_pages
-; Args:      A = fill byte
-; Clobbers:  X, flags (A preserved)
-; Returns:   RTS
-; Range:     $0400-$0BFF (text page 1 + text page 2)
-fill_text_pages:
-    ldx #$00
-
-@text_xloop:
-    .repeat $08, I
-        sta $0400 + ($100 * I), x
-    .endrepeat
-    inx
-    bne @text_xloop
     rts

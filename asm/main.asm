@@ -5,7 +5,6 @@
 
 .import softswitch_reset_optimal
 .import clear_ram_unrolled_fast
-.import fill_text_pages
 .import babeep
 .import ensure_g65sc02_or_beep_loop
 
@@ -21,8 +20,7 @@ PIXEL_X = $0C00
 PIXEL_Y = $0C01
 
 main_loop:
-    lda #$01
-    jsr dhgr_display
+    jsr main_show_banner
     stz PIXEL_X
     stz PIXEL_Y
 
@@ -64,12 +62,14 @@ main_loop:
     sbc #'0'
 
 @plot:
+    pha
+    lda #$01
+    jsr dhgr_display
+    pla
     ldx PIXEL_X
     ldy PIXEL_Y
     clc                 ; page 1
     jsr dhgr_plot
-    lda #$01            ; reassert DHGR display mode/page after each draw
-    jsr dhgr_display
     
     ; Inner loop: advance X across 0..139.
     inc PIXEL_X
@@ -86,6 +86,25 @@ main_loop:
     stz PIXEL_Y
     jmp @wait_key
 
+; main_show_banner
+; Args:      none
+; Clobbers:  A, X, Y, flags
+; Returns:   RTS
+main_show_banner:
+    jsr display_text_clear_visible
+    ldx #$00
+@banner_loop:
+    lda main_banner,x
+    beq @done
+    phx
+    ldy #$00
+    jsr display_text_write_char_normal_clipped
+    plx
+    inx
+    bne @banner_loop
+@done:
+    rts
+
 ; nmi
 ; Args:      none
 ; Clobbers:  none
@@ -99,6 +118,9 @@ nmi:
 ; Returns:   RTI
 irq:
     rti
+
+main_banner:
+    .byte "Ever2e",0
 
 .segment "VECTORS"
     .word nmi
