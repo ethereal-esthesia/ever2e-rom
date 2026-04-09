@@ -1,5 +1,12 @@
 # Custom Apple IIe Platinum ROM Spec (6502) v0.1
 
+## Planned ROM Families
+This repo is expected to produce multiple Apple IIe ROM variants over time:
+
+- a monitor injection ROM
+- an OS ROM
+- additional test ROMs
+
 ## 1. Target
 - Machine: Apple IIe Platinum-compatible
 - CPU: `6502` only (use 6502 instructions)
@@ -172,8 +179,15 @@ This repo is wired for a fast `ca65/ld65` loop targeting Apple IIe 16KB ROM imag
 
 ### Zero-page map
 `asm/bank_switch.inc` is the canonical home for named zero-page allocations used by
-the repo's assembly files. The table below reflects the shared layout currently
-defined there.
+the repo's assembly files. Treat this file as the current low-level ROM contract
+for zero-page ownership and persistent bank/display state shared by the ROMs in
+this repo. Code that wants to participate in the main runtime contract should use
+these definitions and the bank/display helpers instead of inventing private
+persistent ZP state or directly poking tracked soft-switches. The intent is to
+keep this layout reusable across the ROM variants in this repo while still
+staying reasonably compatible with stock-style Apple IIe ROM work where practical.
+
+The table below reflects the shared layout currently defined there.
 
 | Address | Symbol(s) | Purpose |
 |---|---|---|
@@ -196,3 +210,10 @@ defined there.
   persistent control bytes at `$FC-$FE` live there so the display/bank helpers can
   always force those state reads and writes through main ZP even when `ALTZP` is
   active, keeping the tracked bank/display state coherent.
+- The shared ZP layout is intended to stay reusable across ROM variants in this repo
+  and, where practical, align with stock-style Apple IIe ROM conventions instead of
+  drifting into a one-off private layout too early.
+- In practice, that means `asm/bank_switch.inc` is also the current shared ROM ABI for:
+  - which ZP bytes are scratch vs persistent
+  - where tracked machine state lives
+  - which helper layer owns bank/display state transitions
