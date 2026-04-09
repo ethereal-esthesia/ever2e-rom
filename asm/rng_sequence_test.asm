@@ -25,6 +25,7 @@ RNG_SEQUENCE_TEST_SUM_TOP             = $0C2D
 RNG_SEQUENCE_TEST_SAMPLE_COUNT_LO     = $0C2E
 RNG_SEQUENCE_TEST_SAMPLE_COUNT_HI     = $0C2F
 RNG_SEQUENCE_TEST_AVERAGE_BYTE        = $0C30
+RNG_SEQUENCE_TEST_RESULT_FLAG         = $0C31
 
 reset:
     jsr rng_sequence_test_baseline_display
@@ -153,6 +154,24 @@ reset:
     jsr rng_sequence_test_text_put_hex_byte_a
     inc CV
 
+    jsr rng_sequence_test_evaluate_result
+    lda #<rng_sequence_test_result_text
+    ldx #>rng_sequence_test_result_text
+    ldy #$00
+    jsr rng_sequence_test_print_string_ax
+    lda RNG_SEQUENCE_TEST_RESULT_FLAG
+    beq @print_pass
+    lda #<rng_sequence_test_fail_text
+    ldx #>rng_sequence_test_fail_text
+    ldy #$00
+    jsr display_text_write_null_terminated_string_ax_y_padded
+    bra @idle
+@print_pass:
+    lda #<rng_sequence_test_pass_text
+    ldx #>rng_sequence_test_pass_text
+    ldy #$00
+    jsr display_text_write_null_terminated_string_ax_y_padded
+
 @idle:
     jmp @idle
 
@@ -233,6 +252,25 @@ rng_sequence_test_compute_average:
 @average_done:
     rts
 
+rng_sequence_test_evaluate_result:
+    stz RNG_SEQUENCE_TEST_RESULT_FLAG
+
+    lda RNG_SEQUENCE_TEST_COUNT_HI
+    cmp #$F0
+    bcs :+
+    inc RNG_SEQUENCE_TEST_RESULT_FLAG
+:
+    lda RNG_SEQUENCE_TEST_AVERAGE_BYTE
+    cmp #$70
+    bcc @fail
+    cmp #$90
+    bcc @done
+@fail:
+    lda #$01
+    sta RNG_SEQUENCE_TEST_RESULT_FLAG
+@done:
+    rts
+
 rng_sequence_test_print_string_ax:
     jsr rng_sequence_test_text_begin_line
     jsr display_text_write_null_terminated_string_ax_y_padded
@@ -283,6 +321,12 @@ rng_sequence_test_count_text:
     .byte "COUNT ",0
 rng_sequence_test_average_text:
     .byte "AVG ",0
+rng_sequence_test_result_text:
+    .byte "RESULT ",0
+rng_sequence_test_pass_text:
+    .byte "PASS",0
+rng_sequence_test_fail_text:
+    .byte "FAIL",0
 
 nmi:
     rti

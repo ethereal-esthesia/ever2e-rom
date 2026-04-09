@@ -11,6 +11,7 @@ TEST_OUTPUT_BUFFER = $0C20
 TEST_COMMON_STATE_WORK_BYTE = $0C25
 TEST_RESULT_OFFSET_WORK_BYTE = $0C28
 TEST_HEX_TEMPORARY_BYTE      = $0C29
+TEST_RESULT_FLAG             = $0C2A
 
 TEST_EXPECTED_MAIN_WINDOW_SUM_LO  = $0C30
 TEST_EXPECTED_MAIN_WINDOW_SUM_HI  = $0C31
@@ -76,6 +77,7 @@ reset:
     ldy #$00
     jsr print_string_ax
     jsr run_checksum_tests
+    jsr print_result_line
 
 @idle:
     jmp @idle
@@ -192,6 +194,7 @@ run_status_tests:
     rts
 
 run_checksum_tests:
+    stz TEST_RESULT_FLAG
     jsr checksum_main_aux
     jsr checksum_zp_altzp
     jsr checksum_lc_rom_bank2
@@ -418,6 +421,7 @@ checksum_main_aux:
     sta TEST_OUTPUT_BUFFER+6
     lda TEST_EXPECTED_AUX_WINDOW_SUM_LO
     sta TEST_OUTPUT_BUFFER+7
+    jsr update_result_flag_from_checksum_line
 
     lda #<msg_main_aux_checksum
     ldx #>msg_main_aux_checksum
@@ -450,6 +454,7 @@ checksum_zp_altzp:
     sta TEST_OUTPUT_BUFFER+6
     lda TEST_EXPECTED_ZP_AUX_SUM_LO
     sta TEST_OUTPUT_BUFFER+7
+    jsr update_result_flag_from_checksum_line
 
     lda #BANK_SWITCH_COMMON_ALTZP
     jsr bank_switch_common_reset
@@ -479,6 +484,7 @@ checksum_lc_rom_bank2:
     sta TEST_OUTPUT_BUFFER+6
     lda TEST_EXPECTED_LC_BANK2_SUM_LO
     sta TEST_OUTPUT_BUFFER+7
+    jsr update_result_flag_from_checksum_line
 
     lda #BANK_SWITCH_COMMON_RESET_STATE
     jsr bank_switch_apply_common_state
@@ -503,6 +509,7 @@ checksum_lc_bank2_bank1:
     sta TEST_OUTPUT_BUFFER+6
     lda TEST_EXPECTED_LC_BANK1_SUM_LO
     sta TEST_OUTPUT_BUFFER+7
+    jsr update_result_flag_from_checksum_line
 
     lda #BANK_SWITCH_COMMON_RESET_STATE
     jsr bank_switch_apply_common_state
@@ -643,6 +650,25 @@ fill_rng_target_16_bytes_and_sum:
     bne @fill_loop
     rts
 
+update_result_flag_from_checksum_line:
+    lda TEST_OUTPUT_BUFFER
+    cmp TEST_OUTPUT_BUFFER+4
+    bne @fail
+    lda TEST_OUTPUT_BUFFER+1
+    cmp TEST_OUTPUT_BUFFER+5
+    bne @fail
+    lda TEST_OUTPUT_BUFFER+2
+    cmp TEST_OUTPUT_BUFFER+6
+    bne @fail
+    lda TEST_OUTPUT_BUFFER+3
+    cmp TEST_OUTPUT_BUFFER+7
+    beq @done
+@fail:
+    lda #$01
+    sta TEST_RESULT_FLAG
+@done:
+    rts
+
 print_status_line_ax:
     pha
     phx
@@ -697,6 +723,28 @@ print_string_ax:
     jsr text_begin_line
     plx
     pla
+    jsr display_text_write_null_terminated_string_ax_y_padded
+    inc CV
+    rts
+
+print_result_line:
+    jsr text_begin_line
+    lda #<msg_result
+    ldx #>msg_result
+    ldy #$00
+    jsr display_text_write_null_terminated_string_ax_y_padded
+    lda TEST_RESULT_FLAG
+    beq @print_pass
+    lda #<msg_fail
+    ldx #>msg_fail
+    ldy #$00
+    jsr display_text_write_null_terminated_string_ax_y_padded
+    inc CV
+    rts
+@print_pass:
+    lda #<msg_pass
+    ldx #>msg_pass
+    ldy #$00
     jsr display_text_write_null_terminated_string_ax_y_padded
     inc CV
     rts
@@ -774,6 +822,12 @@ msg_lc_rom_bank2_checksum:
     .byte "LC ROM/B2",0
 msg_lc_bank2_bank1_checksum:
     .byte "LC B2/B1",0
+msg_result:
+    .byte "RESULT ",0
+msg_pass:
+    .byte "PASS",0
+msg_fail:
+    .byte "FAIL",0
 
 nmi:
     rti

@@ -14,6 +14,8 @@ EVER2E_RNG_INC = 1
 ; - `rng_seed_ax`: caller provides a 16-bit seed with A = low byte, X = high byte.
 ;   - low byte seeds the Weyl state directly
 ;   - high byte is XORed with the first Weyl output to derive the xorshift seed
+; - `rng_seed_from_vbl`: measures a 16-bit loop count until VBL flips from its
+;   starting state, then seeds through `rng_seed_ax`
 ; - `rng_seed_weyl_a`: compatibility wrapper with X = 0.
 ; - `rng_seed_default`: uses 16-bit seed 0.
 ; - `rng_next_mixed_a`: returns A = (Weyl byte XOR xorshift byte).
@@ -27,6 +29,7 @@ EVER2E_RNG_INC = 1
 .include "bank_switch.inc"
 
 .export rng_seed_ax
+.export rng_seed_from_vbl
 .export rng_seed_weyl_a
 .export rng_seed_default
 .export rng_next_mixed_a
@@ -35,6 +38,9 @@ RNG_WEYL_STATE_MAIN_RAM      = $0C3E
 RNG_XORSHIFT_STATE_MAIN_RAM  = $0C3F
 RNG_XORSHIFT_WORK_BYTE       = ZP_SCRATCH_0
 RNG_MIXED_OUTPUT_WORK_BYTE   = ZP_SCRATCH_1
+RNG_VBL_SEED_COUNT_LO        = ZP_SCRATCH_2
+RNG_VBL_SEED_COUNT_HI        = ZP_SCRATCH_3
+RNG_VBL_INITIAL_STATE        = ZP_SCRATCH_4
 RNG_WEYL_INCREMENT           = $9D
 
 .segment "CODE"
@@ -63,6 +69,27 @@ rng_seed_ax:
 
 rng_seed_weyl_a:
     ldx #$00
+    jmp rng_seed_ax
+
+rng_seed_from_vbl:
+    lda $C019
+    and #$80
+    sta RNG_VBL_INITIAL_STATE
+    stz RNG_VBL_SEED_COUNT_LO
+    stz RNG_VBL_SEED_COUNT_HI
+
+@wait_for_vbl_flip:
+    inc RNG_VBL_SEED_COUNT_LO
+    bne :+
+    inc RNG_VBL_SEED_COUNT_HI
+:
+    lda $C019
+    and #$80
+    cmp RNG_VBL_INITIAL_STATE
+    beq @wait_for_vbl_flip
+
+    lda RNG_VBL_SEED_COUNT_LO
+    ldx RNG_VBL_SEED_COUNT_HI
     jmp rng_seed_ax
 
 rng_next_mixed_a:
