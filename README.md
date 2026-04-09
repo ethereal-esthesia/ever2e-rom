@@ -199,6 +199,41 @@ The table below reflects the shared layout currently defined there.
 | `$FD` | `BANK_SWITCH_COMMON_STATE` | Persistent common bank state in main ZP: LC read/bank/write plus `RAMRD`, `RAMWRT`, `ALTZP` |
 | `$FE` | `DISPLAY_STATE` | Persistent display state in main ZP: `80STORE`, `PAGE2`, `HIRES`, `TEXT`, `MIXED`, `80COL`, `ALTCHARSET`, `AN3` |
 
+### Text encoding
+`display_text_write_char_clipped` in `asm/display.inc` is a direct text-buffer writer. It takes a 7-bit character in `A`, clipped coordinates in `X`/`Y`, and derives the stored screen byte from `INVFLG` plus the current display mode. `display_text_write_null_terminated_string_ax_y_padded` calls that same routine once per visible character, so string output and single-character output always share the same encoding path.
+
+#### Primary 40-column text
+- `INVFLG_NORMAL = $FF`: normal text, stored as `ASCII | $80`
+- `INVFLG_FLASH = $7F`: flashing text, stored as `($80 | ASCII) & $7F`
+- `INVFLG_INVERSE = $3F`: inverse text, stored as `($80 | ASCII) & $3F`
+
+That matches the stock 40-column screen-code ranges:
+
+| Stored value | Meaning |
+|---|---|
+| `$00-$3F` | inverse characters |
+| `$40-$7F` | flashing characters |
+| `$80-$FF` | normal characters |
+
+When the active character set is not MouseText/alternate text, this repo uppercases lowercase ASCII before applying flash encoding. That keeps direct text writes in the primary flashing glyph set instead of wandering into unrelated punctuation/symbol codes.
+
+#### Alternate characters and 80-column text
+- Only `INVFLG` bit 7 is meaningful there.
+- `INVFLG_NORMAL = $FF` still produces normal text by storing `ASCII | $80`.
+- `INVFLG_FLASH = $7F` falls back to inverse there because the alternate/80-column firmware path does not support flashing text.
+- `INVFLG_INVERSE = $3F` produces inverse/direct low-bit text by storing `ASCII & $7F`.
+
+Direct screen-code ranges there are:
+
+| Stored value | Meaning |
+|---|---|
+| `$00-$3F` | inverse/direct text |
+| `$40-$5F` | MouseText glyphs when the alternate character set is active |
+| `$60-$7F` | lowercase/direct alternate glyphs when the alternate character set is active |
+| `$80-$FF` | normal text |
+
+Because this routine writes screen memory directly, it intentionally remaps inverse ASCII `@`-`_` to `$00-$1F` when alternate characters are active. That avoids accidentally selecting the direct MouseText range at `$40-$5F` and matches Apple's recommendation for code that writes screen memory instead of using the firmware's MouseText-aware output path.
+
 ### Commands
 - Build ROM: `make build`
 - Run in JVM emulator: `make run`

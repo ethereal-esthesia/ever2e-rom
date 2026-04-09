@@ -36,6 +36,7 @@
 .export display_text_fill_pages
 .export display_text_clear_visible
 .export display_text_home
+.export display_text_write_null_terminated_string_ax_y_padded
 .export display_text_write_char_clipped
 
 DISPLAY_80STORE   = $01
@@ -258,6 +259,62 @@ display_text_home:
 @home_done:
     rts
 
+; display_text_write_null_terminated_string_ax_y_padded
+; Args:      A = string pointer low, X = string pointer high, Y = exact number
+;            of spaces to emit after the terminating NUL
+; Clobbers:  A, X, Y, flags, ZP_SCRATCH_8-ZP_SCRATCH_F
+; Returns:   RTS
+; Notes:
+; - Writes through the shared `CH`/`CV` cursor state and advances `CH`.
+; - Padding spaces use the current `INVFLG` encoding, just like normal text output.
+; - Calls `display_text_write_char_clipped` once per visible character so string
+;   output stays aligned with the single-character path.
+display_text_write_null_terminated_string_ax_y_padded:
+    sta DISPLAY_TEXT_POINTER_LO
+    stx DISPLAY_TEXT_POINTER_HI
+    sty DISPLAY_TEXT_VISIBLE_WIDTH
+
+@string_loop:
+    ldy #$00
+    lda (DISPLAY_TEXT_POINTER_LO),y
+    beq @padding_loop
+    sta DISPLAY_TEXT_SOURCE_CHARACTER
+
+    lda DISPLAY_TEXT_POINTER_LO
+    pha
+    lda DISPLAY_TEXT_POINTER_HI
+    pha
+
+    lda DISPLAY_TEXT_SOURCE_CHARACTER
+    ldx CH
+    ldy CV
+    jsr display_text_write_char_clipped
+    inc CH
+
+    pla
+    sta DISPLAY_TEXT_POINTER_HI
+    pla
+    sta DISPLAY_TEXT_POINTER_LO
+
+    inc DISPLAY_TEXT_POINTER_LO
+    bne @string_loop
+    inc DISPLAY_TEXT_POINTER_HI
+    bra @string_loop
+
+@padding_loop:
+    lda DISPLAY_TEXT_VISIBLE_WIDTH
+    beq @string_done
+    dec DISPLAY_TEXT_VISIBLE_WIDTH
+    lda #' '
+    ldx CH
+    ldy CV
+    jsr display_text_write_char_clipped
+    inc CH
+    bra @padding_loop
+
+@string_done:
+    rts
+
 ; display_text_write_char_clipped
 ; Args:      A = character, X = clipped column, Y = clipped row
 ; Clobbers:  A, X, Y, flags, ZP_SCRATCH_8-ZP_SCRATCH_F
@@ -266,6 +323,17 @@ display_text_home:
 ; - Detects 80-column mode from the IIe 80COL status read at $C01F.
 ; - In 80-column mode, even columns map to auxiliary text memory and odd columns
 ;   map to main text memory, matching the JVM/py display model.
+; - Standard 40-column text uses the stock `($80 | ASCII) & INVFLG` encoding.
+; - In standard 40-column flash, lowercase ASCII is folded to uppercase before
+;   encoding because the primary flashing character range only carries the
+;   uppercase/symbol set.
+; - Alternate/80-column text uses only bit 7 of `INVFLG`; flash falls back to
+;   inverse there because the firmware path does not support flashing text.
+; - When alternate characters are active, inverse `@`-`_` is remapped from
+;   `$40-$5F` down to `$00-$1F` so generic ASCII output does not accidentally
+;   select MouseText glyph codes. This keeps direct stores aligned with Apple's
+;   recommendation for code that writes text memory instead of going through the
+;   firmware's MouseText-aware output path.
 ; - Coordinates are expected to be pre-clipped by the caller.
 display_text_write_char_clipped:
     sta DISPLAY_TEXT_SOURCE_CHARACTER
@@ -275,18 +343,55 @@ display_text_write_char_clipped:
     jsr display_text_load_invflg_main
     sta DISPLAY_TEXT_ATTRIBUTE_MASK
 
-    lda DISPLAY_TEXT_SOURCE_CHARACTER
-    ora #$80
-
     bit $C01F
-    bmi @encode_80col
+    bmi @encode_alternate_text
+
+    jsr display_text_load_display_state_main
+    and #DISPLAY_ALTCHARSET
+    bne @encode_alternate_text
+
+    lda DISPLAY_TEXT_ATTRIBUTE_MASK
+    cmp #INVFLG_FLASH
+    bne @encode_primary_text
+
+    lda DISPLAY_TEXT_SOURCE_CHARACTER
+    cmp #'a'
+    bcc @encode_primary_text
+    cmp #'z' + 1
+    bcs @encode_primary_text
+    and #$DF
+    bra @encode_primary_apply
+
+@encode_primary_text:
+    lda DISPLAY_TEXT_SOURCE_CHARACTER
+
+@encode_primary_apply:
+    ora #$80
     and DISPLAY_TEXT_ATTRIBUTE_MASK
     jmp display_text_write_char_prepared
 
-@encode_80col:
-    bit DISPLAY_TEXT_ATTRIBUTE_MASK
-    bmi display_text_write_char_prepared
+@encode_alternate_text:
+    lda DISPLAY_TEXT_ATTRIBUTE_MASK
+    and #$80
+    bne @encode_alternate_normal
+
+    lda DISPLAY_TEXT_SOURCE_CHARACTER
+    cmp #'@'
+    bcc @encode_alternate_inverse_direct
+    cmp #$60
+    bcs @encode_alternate_inverse_direct
+    sec
+    sbc #$40
+    jmp display_text_write_char_prepared
+
+@encode_alternate_inverse_direct:
+    lda DISPLAY_TEXT_SOURCE_CHARACTER
     and #$7F
+    jmp display_text_write_char_prepared
+
+@encode_alternate_normal:
+    lda DISPLAY_TEXT_SOURCE_CHARACTER
+    ora #$80
 
 display_text_write_char_prepared:
     sta DISPLAY_TEXT_SOURCE_CHARACTER
@@ -415,6 +520,21 @@ display_text_load_invflg_main:
     lda #$00
     sta $C008
     lda INVFLG
+    tax
+    tya
+    bpl :+
+    lda #$00
+    sta $C009
+:
+    txa
+    rts
+
+display_text_load_display_state_main:
+    lda $C016
+    tay
+    lda #$00
+    sta $C008
+    lda DISPLAY_STATE
     tax
     tya
     bpl :+
