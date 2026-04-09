@@ -522,8 +522,13 @@ lc_fill_worker_start:
     inx
     cpx #$10
     bne @fill_loop
-    lda #BANK_SWITCH_COMMON_RESET_STATE
-    jsr bank_switch_apply_common_state
+    ldx #BANK_SWITCH_COMMON_RESET_STATE
+    lda $C016
+    tay
+    lda #$00
+    sta $C008
+    stx BANK_SWITCH_COMMON_STATE
+    jsr BANK_SWITCH_TRAMP
     rts
 lc_fill_worker_end:
 
@@ -533,8 +538,13 @@ lc_status_worker_start:
     ldx TEST_RESULT_OFFSET_WORK_BYTE
     lda $C012
     sta TEST_OUTPUT_BUFFER,x
-    lda #BANK_SWITCH_COMMON_RESET_STATE
-    jsr bank_switch_apply_common_state
+    ldx #BANK_SWITCH_COMMON_RESET_STATE
+    lda $C016
+    tay
+    lda #$00
+    sta $C008
+    stx BANK_SWITCH_COMMON_STATE
+    jsr BANK_SWITCH_TRAMP
     rts
 lc_status_worker_end:
 
@@ -567,8 +577,13 @@ lc_checksum_worker_start:
     lda ROMSUM_SUM_LO
     sta TEST_OUTPUT_BUFFER,x
 
-    lda #BANK_SWITCH_COMMON_RESET_STATE
-    jsr bank_switch_apply_common_state
+    ldx #BANK_SWITCH_COMMON_RESET_STATE
+    lda $C016
+    tay
+    lda #$00
+    sta $C008
+    stx BANK_SWITCH_COMMON_STATE
+    jsr BANK_SWITCH_TRAMP
     rts
 lc_checksum_worker_end:
 
