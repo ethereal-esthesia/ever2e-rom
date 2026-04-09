@@ -37,11 +37,11 @@ softswitch_reset_optimal:
     bit $C054      ; PAGE2 off (page 1)
     bit $C056      ; HIRES off
 
-    ; Clear annunciators.
+    ; Clear annunciators 0..2 and reset AN3/double-hires off.
     bit $C058
     bit $C05A
     bit $C05C
-    bit $C05E
+    bit $C05F
 
     ; Language-card baseline: ROM visible, writes disabled.
     bit $C082

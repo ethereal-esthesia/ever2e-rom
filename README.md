@@ -179,3 +179,7 @@ This repo is wired for a fast `ca65/ld65` loop targeting Apple IIe 16KB ROM imag
 ### Notes
 - Source uses `.setcpu "65C02"` which is compatible with G65SC02 opcode usage.
 - Vector table is emitted at `$FFFA-$FFFF` by the linker config.
+- `asm/bank_switch.inc` is the canonical home for named zero-page allocations used by
+  the repo's assembly files. The persistent control bytes at `$FC-$FE` live there so
+  the display/bank helpers can always force those state reads and writes through main
+  ZP even when `ALTZP` is active, keeping the tracked bank/display state coherent.

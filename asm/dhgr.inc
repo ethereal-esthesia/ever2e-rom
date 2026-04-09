@@ -6,38 +6,25 @@
 
 .setcpu "65C02"
 
+.include "bank_switch.inc"
+
 .export dhgr_display
 .export dhgr_plot
 .export dhgr_plot_page1
 .export dhgr_plot_page2
-
-DHGR_PTR_LO   = $FB
-DHGR_PTR_HI   = $FC
-DHGR_PHASE    = $FD
-DHGR_PAGE_HI  = $FE
-DHGR_STREAM   = $FA
-DHGR_COLORIDX = $F9
 
 ; dhgr_display
 ; Args:      A = page (1 or 2)
 ; Clobbers:  A, flags
 ; Returns:   RTS
 dhgr_display:
-    sta $C000           ; 80STORE off
-    sta $C057           ; HIRES on
-    sta $C05E           ; AN3 clear
-    sta $C052           ; MIXED off
-    sta $C00D           ; 80COL on
-
     cmp #$02
     beq @page2
-    sta $C054           ; page 1
-    jmp @done
+    lda #DISPLAY_HIRES | DISPLAY_80COL | DISPLAY_AN3
+    jmp display_apply_state
 @page2:
-    sta $C055           ; page 2
-@done:
-    sta $C050           ; GRAPHICS on
-    rts
+    lda #DISPLAY_PAGE2 | DISPLAY_HIRES | DISPLAY_80COL | DISPLAY_AN3
+    jmp display_apply_state
 
 dhgr_plot_page1:
     clc
@@ -50,7 +37,7 @@ dhgr_plot_page2:
 ; dhgr_plot
 ; Args:      A = color (0-15), X = x (0-139), Y = y (0-191)
 ;            C clear => page 1, C set => page 2
-; Clobbers:  A, X, Y, flags, $F9-$FE (ZP scratch), RAMRD/RAMWRT soft-switches
+; Clobbers:  A, X, Y, flags, $F6-$FB (ZP scratch), RAMRD/RAMWRT soft-switches
 ; Returns:   RTS
 ; Notes:
 ; - Computes stream group/phase using x/7 and x%7.

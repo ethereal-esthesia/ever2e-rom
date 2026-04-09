@@ -1,5 +1,7 @@
 ; Reset routine.
 ;
+.include "bank_switch.inc"
+
 ; reset
 ; Args:      none
 ; Clobbers:  A, X, Y, flags
@@ -8,6 +10,12 @@
 reset:
     jsr ensure_g65sc02_or_beep_loop
     jsr softswitch_reset_optimal
+    lda #BANK_SWITCH_EXT_RESET_STATE
+    jsr bank_switch_apply_extended_state
+    lda #BANK_SWITCH_COMMON_RESET_STATE
+    jsr bank_switch_apply_common_state
+    lda #DISPLAY_RESET_STATE
+    jsr display_apply_state
     ; Fill text page 1 + page 2 with spaces.
     lda #$20
     jsr fill_text_pages

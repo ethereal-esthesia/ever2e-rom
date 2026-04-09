@@ -10,12 +10,10 @@
 .import ensure_g65sc02_or_beep_loop
 
 .segment "CODE"
+.include "display.inc"
 .include "dhgr.inc"
 .include "get_key.inc"
 .include "reset.inc"
-
-PIXEL_X = $06
-PIXEL_Y = $07
 
 main_loop:
     lda #$01
