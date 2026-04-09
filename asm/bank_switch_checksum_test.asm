@@ -4,13 +4,28 @@
 
 .include "bank_switch.inc"
 .include "display.inc"
+.include "rng.inc"
 .include "romsum_f800ffff.inc"
 
 TEST_OUTPUT_BUFFER = $0C20
 TEST_COMMON_STATE_WORK_BYTE = $0C25
-TEST_PATTERN_WORK_BYTE = $0C26
-TEST_RESULT_OFFSET_WORK_BYTE = $0C27
-TEST_HEX_TEMPORARY_BYTE    = $0C2A
+TEST_RESULT_OFFSET_WORK_BYTE = $0C28
+TEST_HEX_TEMPORARY_BYTE      = $0C29
+
+TEST_EXPECTED_MAIN_WINDOW_SUM_LO  = $0C30
+TEST_EXPECTED_MAIN_WINDOW_SUM_HI  = $0C31
+TEST_EXPECTED_AUX_WINDOW_SUM_LO   = $0C32
+TEST_EXPECTED_AUX_WINDOW_SUM_HI   = $0C33
+TEST_EXPECTED_ZP_MAIN_SUM_LO      = $0C34
+TEST_EXPECTED_ZP_MAIN_SUM_HI      = $0C35
+TEST_EXPECTED_ZP_AUX_SUM_LO       = $0C36
+TEST_EXPECTED_ZP_AUX_SUM_HI       = $0C37
+TEST_EXPECTED_LC_ROM_SUM_LO       = $0C38
+TEST_EXPECTED_LC_ROM_SUM_HI       = $0C39
+TEST_EXPECTED_LC_BANK2_SUM_LO     = $0C3A
+TEST_EXPECTED_LC_BANK2_SUM_HI     = $0C3B
+TEST_EXPECTED_LC_BANK1_SUM_LO     = $0C3C
+TEST_EXPECTED_LC_BANK1_SUM_HI     = $0C3D
 
 TEST_LABEL_PADDING_FOR_11_CHARACTER_FIELD = 2
 TEST_LABEL_PADDING_FOR_10_CHARACTER_FIELD = 3
@@ -20,6 +35,11 @@ TEST_LABEL_PADDING_FOR_6_CHARACTER_FIELD  = 7
 
 TEST_WORKER_TRAMP = $0C40
 ROMSUM_WORKER_TRAMP = $0D00
+
+TEST_RNG_SUM_WORK_LO         = ZP_SCRATCH_2
+TEST_RNG_SUM_WORK_HI         = ZP_SCRATCH_3
+TEST_TARGET_POINTER_LO       = ZP_SCRATCH_4
+TEST_TARGET_POINTER_HI       = ZP_SCRATCH_5
 
 ; Shared test windows:
 ; - $0C00-$0C0F: main/aux RAM write+read routing
@@ -74,34 +94,85 @@ baseline_all:
 
 write_test_patterns:
     jsr baseline_all
+    jsr set_lc_range
+    jsr romsum_compute_range
+    lda ROMSUM_SUM_LO
+    sta TEST_EXPECTED_LC_ROM_SUM_LO
+    lda ROMSUM_SUM_HI
+    sta TEST_EXPECTED_LC_ROM_SUM_HI
+    jsr rng_seed_default
 
-    lda #$10
-    jsr fill_main_window
+    lda #<MAIN_TEST_START
+    sta TEST_TARGET_POINTER_LO
+    lda #>MAIN_TEST_START
+    sta TEST_TARGET_POINTER_HI
+    jsr fill_rng_target_16_bytes_and_sum
+    lda TEST_RNG_SUM_WORK_LO
+    sta TEST_EXPECTED_MAIN_WINDOW_SUM_LO
+    lda TEST_RNG_SUM_WORK_HI
+    sta TEST_EXPECTED_MAIN_WINDOW_SUM_HI
 
     lda #BANK_SWITCH_COMMON_RAMWRT
-    jsr bank_switch_common_set
-    lda #$A0
-    jsr fill_main_window
-    lda #BANK_SWITCH_COMMON_RAMWRT
-    jsr bank_switch_common_reset
+    jsr bank_switch_apply_common_state
+    lda #<MAIN_TEST_START
+    sta TEST_TARGET_POINTER_LO
+    lda #>MAIN_TEST_START
+    sta TEST_TARGET_POINTER_HI
+    jsr fill_rng_target_16_bytes_and_sum
+    lda #BANK_SWITCH_COMMON_RESET_STATE
+    jsr bank_switch_apply_common_state
+    lda TEST_RNG_SUM_WORK_LO
+    sta TEST_EXPECTED_AUX_WINDOW_SUM_LO
+    lda TEST_RNG_SUM_WORK_HI
+    sta TEST_EXPECTED_AUX_WINDOW_SUM_HI
 
-    lda #$20
-    jsr fill_zp_window
+    lda #<ZP_TEST_START
+    sta TEST_TARGET_POINTER_LO
+    lda #>ZP_TEST_START
+    sta TEST_TARGET_POINTER_HI
+    jsr fill_rng_target_16_bytes_and_sum
+    lda TEST_RNG_SUM_WORK_LO
+    sta TEST_EXPECTED_ZP_MAIN_SUM_LO
+    lda TEST_RNG_SUM_WORK_HI
+    sta TEST_EXPECTED_ZP_MAIN_SUM_HI
 
     lda #BANK_SWITCH_COMMON_ALTZP
-    jsr bank_switch_common_set
-    lda #$B0
-    jsr fill_zp_window
-    lda #BANK_SWITCH_COMMON_ALTZP
-    jsr bank_switch_common_reset
+    jsr bank_switch_apply_common_state
+    lda #<ZP_TEST_START
+    sta TEST_TARGET_POINTER_LO
+    lda #>ZP_TEST_START
+    sta TEST_TARGET_POINTER_HI
+    jsr fill_rng_target_16_bytes_and_sum
+    lda TEST_RNG_SUM_WORK_LO
+    sta TEST_EXPECTED_ZP_AUX_SUM_LO
+    lda TEST_RNG_SUM_WORK_HI
+    sta TEST_EXPECTED_ZP_AUX_SUM_HI
+    lda #BANK_SWITCH_COMMON_RESET_STATE
+    jsr bank_switch_apply_common_state
 
-    lda #BANK_SWITCH_COMMON_LC_READ_RAM | BANK_SWITCH_COMMON_LC_WRITE
-    ldx #$30
-    jsr run_lc_fill_worker
+    lda #BANK_SWITCH_COMMON_LC_WRITE
+    jsr bank_switch_apply_common_state
+    lda #<LC_TEST_START
+    sta TEST_TARGET_POINTER_LO
+    lda #>LC_TEST_START
+    sta TEST_TARGET_POINTER_HI
+    jsr fill_rng_target_16_bytes_and_sum
+    lda TEST_RNG_SUM_WORK_LO
+    sta TEST_EXPECTED_LC_BANK2_SUM_LO
+    lda TEST_RNG_SUM_WORK_HI
+    sta TEST_EXPECTED_LC_BANK2_SUM_HI
 
-    lda #BANK_SWITCH_COMMON_LC_READ_RAM | BANK_SWITCH_COMMON_LC_BANK1 | BANK_SWITCH_COMMON_LC_WRITE
-    ldx #$C0
-    jsr run_lc_fill_worker
+    lda #(BANK_SWITCH_COMMON_LC_BANK1 | BANK_SWITCH_COMMON_LC_WRITE)
+    jsr bank_switch_apply_common_state
+    lda #<LC_TEST_START
+    sta TEST_TARGET_POINTER_LO
+    lda #>LC_TEST_START
+    sta TEST_TARGET_POINTER_HI
+    jsr fill_rng_target_16_bytes_and_sum
+    lda TEST_RNG_SUM_WORK_LO
+    sta TEST_EXPECTED_LC_BANK1_SUM_LO
+    lda TEST_RNG_SUM_WORK_HI
+    sta TEST_EXPECTED_LC_BANK1_SUM_HI
 
     jmp baseline_all
 
@@ -339,6 +410,15 @@ checksum_main_aux:
 
     lda #BANK_SWITCH_COMMON_RAMRD
     jsr bank_switch_common_reset
+    lda TEST_EXPECTED_MAIN_WINDOW_SUM_HI
+    sta TEST_OUTPUT_BUFFER+4
+    lda TEST_EXPECTED_MAIN_WINDOW_SUM_LO
+    sta TEST_OUTPUT_BUFFER+5
+    lda TEST_EXPECTED_AUX_WINDOW_SUM_HI
+    sta TEST_OUTPUT_BUFFER+6
+    lda TEST_EXPECTED_AUX_WINDOW_SUM_LO
+    sta TEST_OUTPUT_BUFFER+7
+
     lda #<msg_main_aux_checksum
     ldx #>msg_main_aux_checksum
     ldy #TEST_LABEL_PADDING_FOR_9_CHARACTER_FIELD
@@ -362,6 +442,14 @@ checksum_zp_altzp:
     sta TEST_OUTPUT_BUFFER+2
     lda ROMSUM_SUM_LO
     sta TEST_OUTPUT_BUFFER+3
+    lda TEST_EXPECTED_ZP_MAIN_SUM_HI
+    sta TEST_OUTPUT_BUFFER+4
+    lda TEST_EXPECTED_ZP_MAIN_SUM_LO
+    sta TEST_OUTPUT_BUFFER+5
+    lda TEST_EXPECTED_ZP_AUX_SUM_HI
+    sta TEST_OUTPUT_BUFFER+6
+    lda TEST_EXPECTED_ZP_AUX_SUM_LO
+    sta TEST_OUTPUT_BUFFER+7
 
     lda #BANK_SWITCH_COMMON_ALTZP
     jsr bank_switch_common_reset
@@ -383,6 +471,14 @@ checksum_lc_rom_bank2:
     lda #BANK_SWITCH_COMMON_LC_READ_RAM
     ldx #$02
     jsr run_lc_checksum_worker
+    lda TEST_EXPECTED_LC_ROM_SUM_HI
+    sta TEST_OUTPUT_BUFFER+4
+    lda TEST_EXPECTED_LC_ROM_SUM_LO
+    sta TEST_OUTPUT_BUFFER+5
+    lda TEST_EXPECTED_LC_BANK2_SUM_HI
+    sta TEST_OUTPUT_BUFFER+6
+    lda TEST_EXPECTED_LC_BANK2_SUM_LO
+    sta TEST_OUTPUT_BUFFER+7
 
     lda #BANK_SWITCH_COMMON_RESET_STATE
     jsr bank_switch_apply_common_state
@@ -399,6 +495,14 @@ checksum_lc_bank2_bank1:
     lda #BANK_SWITCH_COMMON_LC_READ_RAM | BANK_SWITCH_COMMON_LC_BANK1
     ldx #$02
     jsr run_lc_checksum_worker
+    lda TEST_EXPECTED_LC_BANK2_SUM_HI
+    sta TEST_OUTPUT_BUFFER+4
+    lda TEST_EXPECTED_LC_BANK2_SUM_LO
+    sta TEST_OUTPUT_BUFFER+5
+    lda TEST_EXPECTED_LC_BANK1_SUM_HI
+    sta TEST_OUTPUT_BUFFER+6
+    lda TEST_EXPECTED_LC_BANK1_SUM_LO
+    sta TEST_OUTPUT_BUFFER+7
 
     lda #BANK_SWITCH_COMMON_RESET_STATE
     jsr bank_switch_apply_common_state
@@ -440,52 +544,6 @@ set_lc_range:
     sta ROMSUM_END_HI
     rts
 
-fill_main_window:
-    ldx #$00
-@loop:
-    sta MAIN_TEST_START,x
-    clc
-    adc #$01
-    inx
-    cpx #$10
-    bne @loop
-    rts
-
-fill_zp_window:
-    ldx #$00
-@loop:
-    sta ZP_TEST_START,x
-    clc
-    adc #$01
-    inx
-    cpx #$10
-    bne @loop
-    rts
-
-fill_lc_window:
-    ldx #$00
-@loop:
-    sta LC_TEST_START,x
-    clc
-    adc #$01
-    inx
-    cpx #$10
-    bne @loop
-    rts
-
-run_lc_fill_worker:
-    sta TEST_COMMON_STATE_WORK_BYTE
-    stx TEST_PATTERN_WORK_BYTE
-    ldx #$00
-@copy_fill_loop:
-    lda lc_fill_worker_start,x
-    sta TEST_WORKER_TRAMP,x
-    inx
-    cpx #(lc_fill_worker_end - lc_fill_worker_start)
-    bne @copy_fill_loop
-    jsr TEST_WORKER_TRAMP
-    rts
-
 run_lcram_status_worker:
     sta TEST_COMMON_STATE_WORK_BYTE
     stx TEST_RESULT_OFFSET_WORK_BYTE
@@ -511,28 +569,6 @@ run_lc_checksum_worker:
     bne @copy_checksum_loop
     jsr TEST_WORKER_TRAMP
     rts
-
-lc_fill_worker_start:
-    lda TEST_COMMON_STATE_WORK_BYTE
-    jsr bank_switch_apply_common_state
-    lda TEST_PATTERN_WORK_BYTE
-    ldx #$00
-@fill_loop:
-    sta LC_TEST_START,x
-    clc
-    adc #$01
-    inx
-    cpx #$10
-    bne @fill_loop
-    ldx #BANK_SWITCH_COMMON_RESET_STATE
-    lda $C016
-    tay
-    lda #$00
-    sta $C008
-    stx BANK_SWITCH_COMMON_STATE
-    jsr BANK_SWITCH_TRAMP
-    rts
-lc_fill_worker_end:
 
 lc_status_worker_start:
     lda TEST_COMMON_STATE_WORK_BYTE
@@ -589,6 +625,24 @@ lc_checksum_worker_start:
     rts
 lc_checksum_worker_end:
 
+fill_rng_target_16_bytes_and_sum:
+    stz TEST_RNG_SUM_WORK_LO
+    stz TEST_RNG_SUM_WORK_HI
+    ldy #$00
+@fill_loop:
+    jsr rng_next_mixed_a
+    sta (TEST_TARGET_POINTER_LO),y
+    clc
+    adc TEST_RNG_SUM_WORK_LO
+    sta TEST_RNG_SUM_WORK_LO
+    lda TEST_RNG_SUM_WORK_HI
+    adc #$00
+    sta TEST_RNG_SUM_WORK_HI
+    iny
+    cpy #$10
+    bne @fill_loop
+    rts
+
 print_status_line_ax:
     pha
     phx
@@ -621,6 +675,18 @@ print_checksum_line_ax:
     lda TEST_OUTPUT_BUFFER+2
     jsr text_put_hex_byte_a
     lda TEST_OUTPUT_BUFFER+3
+    jsr text_put_hex_byte_a
+    lda #' '
+    jsr text_putc_a
+    lda TEST_OUTPUT_BUFFER+4
+    jsr text_put_hex_byte_a
+    lda TEST_OUTPUT_BUFFER+5
+    jsr text_put_hex_byte_a
+    lda #' '
+    jsr text_putc_a
+    lda TEST_OUTPUT_BUFFER+6
+    jsr text_put_hex_byte_a
+    lda TEST_OUTPUT_BUFFER+7
     jsr text_put_hex_byte_a
     inc CV
     rts
@@ -675,7 +741,7 @@ msg_banner:
 msg_status:
     .byte "STATUS/TRACK OFF ON",0
 msg_checksum:
-    .byte "CHECKSUM OFF ON",0
+    .byte "CHECKSUM OFF ON EOFF EON",0
 msg_bank1_status:
     .byte "BANK1 C011",0
 msg_lcram_status:
