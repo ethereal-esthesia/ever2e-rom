@@ -171,7 +171,7 @@ This repo is wired for a fast `ca65/ld65` loop targeting Apple IIe 16KB ROM imag
 - `ca65` + `ld65` from `cc65` (for example: `brew install cc65`)
 
 ### Layout
-- Source: `asm/main.s`
+- Source: `asm/main.asm`
 - Linker config: `cfg/apple2e_rom16k.cfg`
 - ROM output: `ROMS/EVER2E.ROM`
 - Checksum output: `ROMS/checksum.txt` (MAME internal hash format)
