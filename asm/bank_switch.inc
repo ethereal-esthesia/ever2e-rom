@@ -3,13 +3,16 @@ EVER2E_BANK_SWITCH_INC = 1
 
 ; Shared bank/display helpers and the canonical zero-page map for this repo.
 ;
-; Keep every named ZP allocation here so the assembly files share one layout.
-; The persistent control bytes at $FC-$FE are special: the helpers below always
-; force ALTZP to main memory before reading or writing them, so display and bank
-; state stays coherent in main ZP even when the caller is currently using aux
-; ZP/stack. `bank_switch_apply_common_state` also migrates the caller's return
-; address between the main and auxiliary stacks when it changes ALTZP, so it can
-; safely return with the newly requested bank state live.
+; `$00-$0F` is a shared scratch window. Routines should alias the bytes they
+; need locally, reuse them while active, and not rely on those values surviving
+; calls into other routines.
+;
+; The persistent control bytes at `$FC-$FE` are special: the helpers below
+; always force ALTZP to main memory before reading or writing them, so display
+; and bank state stays coherent in main ZP even when the caller is currently
+; using aux ZP/stack. `bank_switch_apply_common_state` also migrates the
+; caller's return address between the main and auxiliary stacks when it changes
+; ALTZP, so it can safely return with the newly requested bank state live.
 
 .setcpu "65C02"
 
@@ -20,24 +23,23 @@ EVER2E_BANK_SWITCH_INC = 1
 .export bank_switch_extended_set
 .export bank_switch_extended_reset
 
-; Zero-page workspace shared across ROM/demo/test assembly.
-ROMSUM_PTR_LO       = $00
-ROMSUM_PTR_HI       = $01
-ROMSUM_SUM_LO       = $02
-ROMSUM_SUM_HI       = $03
-ROMSUM_END_LO       = $04
-ROMSUM_END_HI       = $05
-ROMSUM_BANK_STATE   = $06
-ROMSUM_BANK_REQUEST = $07
-PIXEL_X             = $08
-PIXEL_Y             = $09
-
-DHGR_PAGE_HI  = $F6
-DHGR_COLORIDX = $F7
-DHGR_STREAM   = $F8
-DHGR_PTR_LO   = $F9
-DHGR_PTR_HI   = $FA
-DHGR_PHASE    = $FB
+; Shared ZP scratch area. Alias these locally inside each routine as needed.
+ZP_SCRATCH_0 = $00
+ZP_SCRATCH_1 = $01
+ZP_SCRATCH_2 = $02
+ZP_SCRATCH_3 = $03
+ZP_SCRATCH_4 = $04
+ZP_SCRATCH_5 = $05
+ZP_SCRATCH_6 = $06
+ZP_SCRATCH_7 = $07
+ZP_SCRATCH_8 = $08
+ZP_SCRATCH_9 = $09
+ZP_SCRATCH_A = $0A
+ZP_SCRATCH_B = $0B
+ZP_SCRATCH_C = $0C
+ZP_SCRATCH_D = $0D
+ZP_SCRATCH_E = $0E
+ZP_SCRATCH_F = $0F
 
 BANK_SWITCH_EXT_STATE    = $FC
 BANK_SWITCH_COMMON_STATE = $FD

@@ -170,6 +170,18 @@ This repo is wired for a fast `ca65/ld65` loop targeting Apple IIe 16KB ROM imag
 - Checksum output: `ROMS/checksum.txt` (MAME internal hash format)
 - Build artifacts: `build/`
 
+### Zero-page map
+`asm/bank_switch.inc` is the canonical home for named zero-page allocations used by
+the repo's assembly files. The table below reflects the shared layout currently
+defined there.
+
+| Address | Symbol(s) | Purpose |
+|---|---|---|
+| `$00-$0F` | `ZP_SCRATCH_0` ... `ZP_SCRATCH_F` | Shared routine scratch window. Routines alias and reuse this space locally; current users include `dhgr.inc` (`$00-$05`), `romsum_f800ffff.inc` (`$00-$07`), and `cpu_guard.asm` (`$00`). |
+| `$FC` | `BANK_SWITCH_EXT_STATE` | Persistent extended bank state in main ZP: `INTCXROM`, `INTC8ROM`, LC prewrite latch, `AN0-AN2` |
+| `$FD` | `BANK_SWITCH_COMMON_STATE` | Persistent common bank state in main ZP: LC read/bank/write plus `RAMRD`, `RAMWRT`, `ALTZP` |
+| `$FE` | `DISPLAY_STATE` | Persistent display state in main ZP: `80STORE`, `PAGE2`, `HIRES`, `TEXT`, `MIXED`, `80COL`, `ALTCHARSET`, `AN3` |
+
 ### Commands
 - Build ROM: `make build`
 - Run in JVM emulator: `make run`
@@ -180,6 +192,7 @@ This repo is wired for a fast `ca65/ld65` loop targeting Apple IIe 16KB ROM imag
 - Source uses `.setcpu "65C02"` which is compatible with G65SC02 opcode usage.
 - Vector table is emitted at `$FFFA-$FFFF` by the linker config.
 - `asm/bank_switch.inc` is the canonical home for named zero-page allocations used by
-  the repo's assembly files. The persistent control bytes at `$FC-$FE` live there so
-  the display/bank helpers can always force those state reads and writes through main
-  ZP even when `ALTZP` is active, keeping the tracked bank/display state coherent.
+  the repo's assembly files. `$00-$0F` is a shared scratch area, while the
+  persistent control bytes at `$FC-$FE` live there so the display/bank helpers can
+  always force those state reads and writes through main ZP even when `ALTZP` is
+  active, keeping the tracked bank/display state coherent.

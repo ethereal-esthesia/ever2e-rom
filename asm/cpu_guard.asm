@@ -13,7 +13,7 @@
 
 ; ensure_g65sc02_or_beep_loop
 ; Args:      none
-; Clobbers:  A, X, flags, $00 (ZP scratch)
+; Clobbers:  A, X, flags, $00 (shared ZP scratch)
 ; Returns:   RTS on success; otherwise never returns (beep loop)
 ensure_g65sc02_or_beep_loop:
     tsx
