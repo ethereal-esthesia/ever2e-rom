@@ -33,7 +33,10 @@
 .export display_apply_state
 .export display_set
 .export display_reset
+.export display_text_fill_pages
+.export display_text_clear_visible
 .export display_text_write_char_clipped
+.export display_text_write_char_normal_clipped
 
 DISPLAY_80STORE   = $01
 DISPLAY_PAGE2     = $02
@@ -51,6 +54,8 @@ DISPLAY_TEXT_PTR_HI = ZP_SCRATCH_9
 DISPLAY_TEXT_CHAR   = ZP_SCRATCH_A
 DISPLAY_TEXT_COL    = ZP_SCRATCH_B
 DISPLAY_TEXT_SAVE   = ZP_SCRATCH_C
+DISPLAY_TEXT_WIDTH  = ZP_SCRATCH_D
+DISPLAY_TEXT_ROW    = ZP_SCRATCH_E
 
 .segment "CODE"
 
@@ -184,6 +189,51 @@ display_apply_state:
 @done:
     rts
 
+; display_text_fill_pages
+; Args:      A = raw text byte to store
+; Clobbers:  X, flags (A preserved)
+; Returns:   RTS
+; Range:     $0400-$0BFF (text pages 1 + 2)
+display_text_fill_pages:
+    ldx #$00
+
+@fill_pages_xloop:
+    .repeat $08, I
+        sta $0400 + ($100 * I), x
+    .endrepeat
+    inx
+    bne @fill_pages_xloop
+    rts
+
+; display_text_clear_visible
+; Args:      none
+; Clobbers:  A, X, Y, flags, ZP_SCRATCH_8-ZP_SCRATCH_E
+; Returns:   RTS
+; Notes:
+; - Clears only the currently visible text page.
+; - Fills with normal spaces so the visible screen comes up blank.
+display_text_clear_visible:
+    jsr display_text_current_width
+    sta DISPLAY_TEXT_WIDTH
+    ldy #$00
+@clear_row_loop:
+    sty DISPLAY_TEXT_ROW
+    ldx #$00
+@clear_col_loop:
+    phx
+    lda #' '
+    ldy DISPLAY_TEXT_ROW
+    jsr display_text_write_char_normal_clipped
+    plx
+    inx
+    cpx DISPLAY_TEXT_WIDTH
+    bne @clear_col_loop
+    ldy DISPLAY_TEXT_ROW
+    iny
+    cpy #24
+    bne @clear_row_loop
+    rts
+
 ; display_text_write_char_clipped
 ; Args:      A = character, X = clipped column, Y = clipped row
 ; Clobbers:  A, X, Y, flags, ZP_SCRATCH_8-ZP_SCRATCH_C
@@ -193,7 +243,21 @@ display_apply_state:
 ; - In 80-column mode, even columns map to auxiliary text memory and odd columns
 ;   map to main text memory, matching the JVM/py display model.
 ; - Coordinates are expected to be pre-clipped by the caller.
+; - This entry defaults to inverse text for stock 40/80-column banner/status use.
 display_text_write_char_clipped:
+    and #$3F
+    jmp display_text_write_char_prepared
+
+; display_text_write_char_normal_clipped
+; Args:      A = character, X = clipped column, Y = clipped row
+; Clobbers:  A, X, Y, flags, ZP_SCRATCH_8-ZP_SCRATCH_C
+; Returns:   RTS
+; Notes:
+; - Writes normal text with bit 7 set, which is the better fit for mixed-case text.
+display_text_write_char_normal_clipped:
+    ora #$80
+
+display_text_write_char_prepared:
     sta DISPLAY_TEXT_CHAR
     stx DISPLAY_TEXT_COL
 
@@ -232,7 +296,6 @@ display_text_write_char_clipped:
 @write40_now:
     ldy #$00
     lda DISPLAY_TEXT_CHAR
-    ora #$80
     sta (DISPLAY_TEXT_PTR_LO),y
 
     bit $C018
@@ -255,10 +318,6 @@ display_text_write_char_clipped:
     bcc :+
     inc DISPLAY_TEXT_PTR_HI
 :
-    lda DISPLAY_TEXT_CHAR
-    ora #$80
-    sta DISPLAY_TEXT_CHAR
-
     bit $C018
     bmi @text80_page2_route
 
@@ -309,6 +368,15 @@ display_text_write_char_clipped:
 
 @restore_page2_on:
     bit $C055
+    rts
+
+display_text_current_width:
+    bit $C01F
+    bmi @width_80
+    lda #40
+    rts
+@width_80:
+    lda #80
     rts
 
 display_text_row_base_lo:

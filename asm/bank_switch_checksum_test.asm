@@ -13,7 +13,6 @@ WORK_PATTERN = $0C26
 WORK_DEST_OFFSET = $0C27
 TEXT_CUR_ROW = $0C28
 TEXT_CUR_COL = $0C29
-TEXT_WIDTH = $0C2A
 
 STR_PTR_LO = ZP_SCRATCH_D
 STR_PTR_HI = ZP_SCRATCH_E
@@ -36,7 +35,7 @@ LC_TEST_END     = $D00F
 reset:
     jsr baseline_all
     jsr write_test_patterns
-    jsr text_clear_page1
+    jsr display_text_clear_visible
     stz TEXT_ROW
 
     lda #<msg_banner
@@ -624,42 +623,11 @@ text_puts_ax:
 @done:
     rts
 
-text_clear_page1:
-    jsr text_current_width
-    sta TEXT_WIDTH
-    ldy #$00
-@row_loop:
-    sty TEXT_CUR_ROW
-    ldx #$00
-@col_loop:
-    phx
-    lda #' ' | $80
-    ldy TEXT_CUR_ROW
-    jsr display_text_write_char_clipped
-    plx
-    inx
-    cpx TEXT_WIDTH
-    bne @col_loop
-    ldy TEXT_CUR_ROW
-    iny
-    cpy #24
-    bne @row_loop
-    rts
-
 text_begin_line:
     lda TEXT_ROW
     sta TEXT_CUR_ROW
     stz TEXT_CUR_COL
     inc TEXT_ROW
-    rts
-
-text_current_width:
-    bit $C01F
-    bmi @col80
-    lda #40
-    rts
-@col80:
-    lda #80
     rts
 
 text_put_hex_byte_a:
@@ -688,7 +656,7 @@ text_putc_a:
     phy
     ldx TEXT_CUR_COL
     ldy TEXT_CUR_ROW
-    jsr display_text_write_char_clipped
+    jsr display_text_write_char_normal_clipped
     ply
     inc TEXT_CUR_COL
     rts

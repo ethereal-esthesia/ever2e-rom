@@ -17,8 +17,8 @@ reset:
     lda #DISPLAY_RESET_STATE
     jsr display_apply_state
     ; Fill text page 1 + page 2 with spaces.
-    lda #$20
-    jsr fill_text_pages
+    lda #' ' | $80
+    jsr display_text_fill_pages
     ; Fill all writable main RAM except text pages with NUL.
     lda #$00
     jsr clear_ram_unrolled_fast
