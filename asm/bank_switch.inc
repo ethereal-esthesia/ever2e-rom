@@ -7,6 +7,10 @@ EVER2E_BANK_SWITCH_INC = 1
 ; need locally, reuse them while active, and not rely on those values surviving
 ; calls into other routines.
 ;
+; The repo also reserves a small stock-style text state block in main ZP:
+; `CH` ($24), `CV` ($25), and `INVFLG` ($32). Text helpers use these Apple
+; conventions for cursor position and text attribute selection.
+;
 ; The persistent control bytes at `$FC-$FE` are special: the helpers below
 ; always force ALTZP to main memory before reading or writing them, so display
 ; and bank state stays coherent in main ZP even when the caller is currently
@@ -40,6 +44,14 @@ ZP_SCRATCH_C = $0C
 ZP_SCRATCH_D = $0D
 ZP_SCRATCH_E = $0E
 ZP_SCRATCH_F = $0F
+
+CH                   = $24
+CV                   = $25
+INVFLG               = $32
+INVFLG_NORMAL        = $FF
+INVFLG_FLASH         = $7F
+INVFLG_INVERSE       = $3F
+INVFLG_RESET_STATE   = INVFLG_INVERSE
 
 BANK_SWITCH_EXT_STATE    = $FC
 BANK_SWITCH_COMMON_STATE = $FD

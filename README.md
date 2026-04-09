@@ -192,6 +192,9 @@ The table below reflects the shared layout currently defined there.
 | Address | Symbol(s) | Purpose |
 |---|---|---|
 | `$00-$0F` | `ZP_SCRATCH_0` ... `ZP_SCRATCH_F` | Shared routine scratch window. Routines alias and reuse this space locally; current users include `dhgr.inc` (`$00-$05`), `romsum_f800ffff.inc` (`$00-$07`), and `cpu_guard.asm` (`$00`). |
+| `$24` | `CH` | Text cursor column. This repo keeps the Apple stock name `CH`, but treat it as the shared text cursor column byte. |
+| `$25` | `CV` | Text cursor row. This repo keeps the Apple stock name `CV`, but treat it as the shared text cursor row byte. |
+| `$32` | `INVFLG` | Text attribute flag. This repo keeps the Apple stock name `INVFLG`; `INVFLG_NORMAL` (`$FF`), `INVFLG_FLASH` (`$7F`), and `INVFLG_INVERSE` (`$3F`) follow the Apple monitor/Applesoft convention. |
 | `$FC` | `BANK_SWITCH_EXT_STATE` | Persistent extended bank state in main ZP: `INTCXROM`, `INTC8ROM`, LC prewrite latch, `AN0-AN2` |
 | `$FD` | `BANK_SWITCH_COMMON_STATE` | Persistent common bank state in main ZP: LC read/bank/write plus `RAMRD`, `RAMWRT`, `ALTZP` |
 | `$FE` | `DISPLAY_STATE` | Persistent display state in main ZP: `80STORE`, `PAGE2`, `HIRES`, `TEXT`, `MIXED`, `80COL`, `ALTCHARSET`, `AN3` |
@@ -207,9 +210,9 @@ The table below reflects the shared layout currently defined there.
 - Vector table is emitted at `$FFFA-$FFFF` by the linker config.
 - `asm/bank_switch.inc` is the canonical home for named zero-page allocations used by
   the repo's assembly files. `$00-$0F` is a shared scratch area, while the
-  persistent control bytes at `$FC-$FE` live there so the display/bank helpers can
-  always force those state reads and writes through main ZP even when `ALTZP` is
-  active, keeping the tracked bank/display state coherent.
+  stock-style text state bytes (`CH`, `CV`, `INVFLG`) and the persistent control
+  bytes at `$FC-$FE` live there so the shared helpers can keep cursor, attribute,
+  display, and bank state coherent across the ROMs in this repo.
 - The shared ZP layout is intended to stay reusable across ROM variants in this repo
   and, where practical, align with stock-style Apple IIe ROM conventions instead of
   drifting into a one-off private layout too early.

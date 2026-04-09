@@ -6,17 +6,14 @@
 .include "display.inc"
 .include "romsum_f800ffff.inc"
 
-TEST_BUF = $0C20
-TEXT_ROW = $0C24
-WORK_COMMON_STATE = $0C25
-WORK_PATTERN = $0C26
-WORK_DEST_OFFSET = $0C27
-TEXT_CUR_ROW = $0C28
-TEXT_CUR_COL = $0C29
+TEST_OUTPUT_BUFFER = $0C20
+TEST_COMMON_STATE_WORK_BYTE = $0C25
+TEST_PATTERN_WORK_BYTE = $0C26
+TEST_RESULT_OFFSET_WORK_BYTE = $0C27
+TEST_HEX_TEMPORARY_BYTE    = $0C2A
 
-STR_PTR_LO = ZP_SCRATCH_D
-STR_PTR_HI = ZP_SCRATCH_E
-HEX_TMP = ZP_SCRATCH_F
+TEST_STRING_POINTER_LO = ZP_SCRATCH_D
+TEST_STRING_POINTER_HI = ZP_SCRATCH_E
 
 TEST_WORKER_TRAMP = $0800
 ROMSUM_WORKER_TRAMP = $0900
@@ -36,7 +33,7 @@ reset:
     jsr baseline_all
     jsr write_test_patterns
     jsr display_text_clear_visible
-    stz TEXT_ROW
+    jsr display_text_home
 
     lda #<msg_banner
     ldx #>msg_banner
@@ -62,6 +59,9 @@ baseline_all:
     jsr bank_switch_apply_common_state
     lda #DISPLAY_RESET_STATE
     jsr display_apply_state
+    lda #INVFLG_NORMAL
+    sta INVFLG
+    jsr display_text_home
     rts
 
 write_test_patterns:
@@ -123,11 +123,11 @@ common_status_bank1:
     lda #BANK_SWITCH_COMMON_RESET_STATE
     jsr bank_switch_apply_common_state
     lda $C011
-    sta TEST_BUF
+    sta TEST_OUTPUT_BUFFER
     lda #BANK_SWITCH_COMMON_LC_BANK1
     jsr bank_switch_common_set
     lda $C011
-    sta TEST_BUF+1
+    sta TEST_OUTPUT_BUFFER+1
     lda #BANK_SWITCH_COMMON_RESET_STATE
     jsr bank_switch_apply_common_state
     lda #<msg_bank1_status
@@ -138,7 +138,7 @@ common_status_lcram:
     lda #BANK_SWITCH_COMMON_RESET_STATE
     jsr bank_switch_apply_common_state
     lda $C012
-    sta TEST_BUF
+    sta TEST_OUTPUT_BUFFER
     lda #BANK_SWITCH_COMMON_LC_READ_RAM
     ldx #$01
     jsr run_lcram_status_worker
@@ -152,11 +152,11 @@ common_status_ramrd:
     lda #BANK_SWITCH_COMMON_RESET_STATE
     jsr bank_switch_apply_common_state
     lda $C013
-    sta TEST_BUF
+    sta TEST_OUTPUT_BUFFER
     lda #BANK_SWITCH_COMMON_RAMRD
     jsr bank_switch_common_set
     lda $C013
-    sta TEST_BUF+1
+    sta TEST_OUTPUT_BUFFER+1
     lda #BANK_SWITCH_COMMON_RESET_STATE
     jsr bank_switch_apply_common_state
     lda #<msg_ramrd_status
@@ -167,14 +167,14 @@ common_status_ramwrt:
     lda #BANK_SWITCH_COMMON_RESET_STATE
     jsr bank_switch_apply_common_state
     lda $C014
-    sta TEST_BUF
+    sta TEST_OUTPUT_BUFFER
     lda #BANK_SWITCH_COMMON_RAMWRT
     jsr bank_switch_common_set
     lda $C014
     tax
     lda #$00
     sta $C004
-    stx TEST_BUF+1
+    stx TEST_OUTPUT_BUFFER+1
     lda #BANK_SWITCH_COMMON_RESET_STATE
     jsr bank_switch_apply_common_state
     lda #<msg_ramwrt_status
@@ -185,11 +185,11 @@ common_status_altzp:
     lda #BANK_SWITCH_COMMON_RESET_STATE
     jsr bank_switch_apply_common_state
     lda $C016
-    sta TEST_BUF
+    sta TEST_OUTPUT_BUFFER
     lda #BANK_SWITCH_COMMON_ALTZP
     jsr bank_switch_common_set
     lda $C016
-    sta TEST_BUF+1
+    sta TEST_OUTPUT_BUFFER+1
     lda #BANK_SWITCH_COMMON_ALTZP
     jsr bank_switch_common_reset
     lda #<msg_altzp_status
@@ -200,11 +200,11 @@ common_track_lcwrite:
     lda #BANK_SWITCH_COMMON_RESET_STATE
     jsr bank_switch_apply_common_state
     lda BANK_SWITCH_COMMON_STATE
-    sta TEST_BUF
+    sta TEST_OUTPUT_BUFFER
     lda #BANK_SWITCH_COMMON_LC_WRITE
     jsr bank_switch_common_set
     lda BANK_SWITCH_COMMON_STATE
-    sta TEST_BUF+1
+    sta TEST_OUTPUT_BUFFER+1
     lda #BANK_SWITCH_COMMON_RESET_STATE
     jsr bank_switch_apply_common_state
     lda #<msg_lcwrite_track
@@ -215,11 +215,11 @@ ext_status_intcxrom:
     lda #$00
     jsr bank_switch_apply_extended_state
     lda $C015
-    sta TEST_BUF
+    sta TEST_OUTPUT_BUFFER
     lda #BANK_SWITCH_EXT_INTCXROM
     jsr bank_switch_extended_set
     lda $C015
-    sta TEST_BUF+1
+    sta TEST_OUTPUT_BUFFER+1
     lda #$00
     jsr bank_switch_apply_extended_state
     lda #<msg_intcxrom_status
@@ -230,11 +230,11 @@ ext_track_intc8rom:
     lda #$00
     jsr bank_switch_apply_extended_state
     lda BANK_SWITCH_EXT_STATE
-    sta TEST_BUF
+    sta TEST_OUTPUT_BUFFER
     lda #BANK_SWITCH_EXT_INTC8ROM
     jsr bank_switch_extended_set
     lda BANK_SWITCH_EXT_STATE
-    sta TEST_BUF+1
+    sta TEST_OUTPUT_BUFFER+1
     lda #$00
     jsr bank_switch_apply_extended_state
     lda #<msg_intc8rom_track
@@ -245,11 +245,11 @@ ext_track_prewrite:
     lda #$00
     jsr bank_switch_apply_extended_state
     lda BANK_SWITCH_EXT_STATE
-    sta TEST_BUF
+    sta TEST_OUTPUT_BUFFER
     lda #BANK_SWITCH_EXT_LC_PREWRITE
     jsr bank_switch_extended_set
     lda BANK_SWITCH_EXT_STATE
-    sta TEST_BUF+1
+    sta TEST_OUTPUT_BUFFER+1
     lda #$00
     jsr bank_switch_apply_extended_state
     lda #<msg_prewrite_track
@@ -260,11 +260,11 @@ ext_track_an0:
     lda #$00
     jsr bank_switch_apply_extended_state
     lda BANK_SWITCH_EXT_STATE
-    sta TEST_BUF
+    sta TEST_OUTPUT_BUFFER
     lda #BANK_SWITCH_EXT_AN0
     jsr bank_switch_extended_set
     lda BANK_SWITCH_EXT_STATE
-    sta TEST_BUF+1
+    sta TEST_OUTPUT_BUFFER+1
     lda #$00
     jsr bank_switch_apply_extended_state
     lda #<msg_an0_track
@@ -275,11 +275,11 @@ ext_track_an1:
     lda #$00
     jsr bank_switch_apply_extended_state
     lda BANK_SWITCH_EXT_STATE
-    sta TEST_BUF
+    sta TEST_OUTPUT_BUFFER
     lda #BANK_SWITCH_EXT_AN1
     jsr bank_switch_extended_set
     lda BANK_SWITCH_EXT_STATE
-    sta TEST_BUF+1
+    sta TEST_OUTPUT_BUFFER+1
     lda #$00
     jsr bank_switch_apply_extended_state
     lda #<msg_an1_track
@@ -290,11 +290,11 @@ ext_track_an2:
     lda #$00
     jsr bank_switch_apply_extended_state
     lda BANK_SWITCH_EXT_STATE
-    sta TEST_BUF
+    sta TEST_OUTPUT_BUFFER
     lda #BANK_SWITCH_EXT_AN2
     jsr bank_switch_extended_set
     lda BANK_SWITCH_EXT_STATE
-    sta TEST_BUF+1
+    sta TEST_OUTPUT_BUFFER+1
     lda #$00
     jsr bank_switch_apply_extended_state
     lda #<msg_an2_track
@@ -307,18 +307,18 @@ checksum_main_aux:
     jsr set_main_range
     jsr romsum_compute_range
     lda ROMSUM_SUM_HI
-    sta TEST_BUF
+    sta TEST_OUTPUT_BUFFER
     lda ROMSUM_SUM_LO
-    sta TEST_BUF+1
+    sta TEST_OUTPUT_BUFFER+1
 
     lda #BANK_SWITCH_COMMON_RAMRD
     jsr bank_switch_common_set
     jsr set_main_range
     jsr romsum_compute_range
     lda ROMSUM_SUM_HI
-    sta TEST_BUF+2
+    sta TEST_OUTPUT_BUFFER+2
     lda ROMSUM_SUM_LO
-    sta TEST_BUF+3
+    sta TEST_OUTPUT_BUFFER+3
 
     lda #BANK_SWITCH_COMMON_RAMRD
     jsr bank_switch_common_reset
@@ -332,18 +332,18 @@ checksum_zp_altzp:
     jsr set_zp_range
     jsr romsum_compute_range
     lda ROMSUM_SUM_HI
-    sta TEST_BUF
+    sta TEST_OUTPUT_BUFFER
     lda ROMSUM_SUM_LO
-    sta TEST_BUF+1
+    sta TEST_OUTPUT_BUFFER+1
 
     lda #BANK_SWITCH_COMMON_ALTZP
     jsr bank_switch_common_set
     jsr set_zp_range
     jsr romsum_compute_range
     lda ROMSUM_SUM_HI
-    sta TEST_BUF+2
+    sta TEST_OUTPUT_BUFFER+2
     lda ROMSUM_SUM_LO
-    sta TEST_BUF+3
+    sta TEST_OUTPUT_BUFFER+3
 
     lda #BANK_SWITCH_COMMON_ALTZP
     jsr bank_switch_common_reset
@@ -357,9 +357,9 @@ checksum_lc_rom_bank2:
     jsr set_lc_range
     jsr romsum_compute_range
     lda ROMSUM_SUM_HI
-    sta TEST_BUF
+    sta TEST_OUTPUT_BUFFER
     lda ROMSUM_SUM_LO
-    sta TEST_BUF+1
+    sta TEST_OUTPUT_BUFFER+1
 
     lda #BANK_SWITCH_COMMON_LC_READ_RAM
     ldx #$02
@@ -453,8 +453,8 @@ fill_lc_window:
     rts
 
 run_lc_fill_worker:
-    sta WORK_COMMON_STATE
-    stx WORK_PATTERN
+    sta TEST_COMMON_STATE_WORK_BYTE
+    stx TEST_PATTERN_WORK_BYTE
     ldx #$00
 @copy_fill_loop:
     lda lc_fill_worker_start,x
@@ -466,8 +466,8 @@ run_lc_fill_worker:
     rts
 
 run_lcram_status_worker:
-    sta WORK_COMMON_STATE
-    stx WORK_DEST_OFFSET
+    sta TEST_COMMON_STATE_WORK_BYTE
+    stx TEST_RESULT_OFFSET_WORK_BYTE
     ldx #$00
 @copy_status_loop:
     lda lc_status_worker_start,x
@@ -479,8 +479,8 @@ run_lcram_status_worker:
     rts
 
 run_lc_checksum_worker:
-    sta WORK_COMMON_STATE
-    stx WORK_DEST_OFFSET
+    sta TEST_COMMON_STATE_WORK_BYTE
+    stx TEST_RESULT_OFFSET_WORK_BYTE
     ldx #$00
 @copy_checksum_loop:
     lda lc_checksum_worker_start,x
@@ -492,9 +492,9 @@ run_lc_checksum_worker:
     rts
 
 lc_fill_worker_start:
-    lda WORK_COMMON_STATE
+    lda TEST_COMMON_STATE_WORK_BYTE
     jsr bank_switch_apply_common_state
-    lda WORK_PATTERN
+    lda TEST_PATTERN_WORK_BYTE
     ldx #$00
 @fill_loop:
     sta LC_TEST_START,x
@@ -514,11 +514,11 @@ lc_fill_worker_start:
 lc_fill_worker_end:
 
 lc_status_worker_start:
-    lda WORK_COMMON_STATE
+    lda TEST_COMMON_STATE_WORK_BYTE
     jsr bank_switch_apply_common_state
-    ldx WORK_DEST_OFFSET
+    ldx TEST_RESULT_OFFSET_WORK_BYTE
     lda $C012
-    sta TEST_BUF,x
+    sta TEST_OUTPUT_BUFFER,x
     lda #$00
     sta $C002
     sta $C004
@@ -538,7 +538,7 @@ lc_checksum_worker_start:
     cpx #(romsum_compute_range_tramp_end - romsum_compute_range_tramp_start)
     bne @copy_romsum_loop
 
-    lda WORK_COMMON_STATE
+    lda TEST_COMMON_STATE_WORK_BYTE
     jsr bank_switch_apply_common_state
 
     lda #<LC_TEST_START
@@ -551,12 +551,12 @@ lc_checksum_worker_start:
     sta ROMSUM_END_HI
     jsr ROMSUM_WORKER_TRAMP
 
-    ldx WORK_DEST_OFFSET
+    ldx TEST_RESULT_OFFSET_WORK_BYTE
     lda ROMSUM_SUM_HI
-    sta TEST_BUF,x
+    sta TEST_OUTPUT_BUFFER,x
     inx
     lda ROMSUM_SUM_LO
-    sta TEST_BUF,x
+    sta TEST_OUTPUT_BUFFER,x
 
     lda #$00
     sta $C002
@@ -577,12 +577,14 @@ print_status_line_ax:
     jsr text_puts_ax
     lda #' '
     jsr text_putc_a
-    lda TEST_BUF
+    lda TEST_OUTPUT_BUFFER
     jsr text_put_hex_byte_a
     lda #' '
     jsr text_putc_a
-    lda TEST_BUF+1
-    jmp text_put_hex_byte_a
+    lda TEST_OUTPUT_BUFFER+1
+    jsr text_put_hex_byte_a
+    inc CV
+    rts
 
 print_checksum_line_ax:
     pha
@@ -593,16 +595,18 @@ print_checksum_line_ax:
     jsr text_puts_ax
     lda #' '
     jsr text_putc_a
-    lda TEST_BUF
+    lda TEST_OUTPUT_BUFFER
     jsr text_put_hex_byte_a
-    lda TEST_BUF+1
+    lda TEST_OUTPUT_BUFFER+1
     jsr text_put_hex_byte_a
     lda #' '
     jsr text_putc_a
-    lda TEST_BUF+2
+    lda TEST_OUTPUT_BUFFER+2
     jsr text_put_hex_byte_a
-    lda TEST_BUF+3
-    jmp text_put_hex_byte_a
+    lda TEST_OUTPUT_BUFFER+3
+    jsr text_put_hex_byte_a
+    inc CV
+    rts
 
 print_string_ax:
     pha
@@ -610,34 +614,44 @@ print_string_ax:
     jsr text_begin_line
     plx
     pla
+    jsr text_puts_ax
+    inc CV
+    rts
 text_puts_ax:
-    sta STR_PTR_LO
-    stx STR_PTR_HI
+    sta TEST_STRING_POINTER_LO
+    stx TEST_STRING_POINTER_HI
     ldy #$00
 @loop:
-    lda (STR_PTR_LO),y
+    lda (TEST_STRING_POINTER_LO),y
     beq @done
+    sta TEST_HEX_TEMPORARY_BYTE
+    lda TEST_STRING_POINTER_LO
+    pha
+    lda TEST_STRING_POINTER_HI
+    pha
+    lda TEST_HEX_TEMPORARY_BYTE
     jsr text_putc_a
+    pla
+    sta TEST_STRING_POINTER_HI
+    pla
+    sta TEST_STRING_POINTER_LO
     iny
     bne @loop
 @done:
     rts
 
 text_begin_line:
-    lda TEXT_ROW
-    sta TEXT_CUR_ROW
-    stz TEXT_CUR_COL
-    inc TEXT_ROW
+    stz CH
     rts
 
 text_put_hex_byte_a:
-    sta HEX_TMP
+    sta TEST_HEX_TEMPORARY_BYTE
     lsr a
     lsr a
     lsr a
     lsr a
     jsr text_put_hex_nibble_a
-    lda HEX_TMP
+    lda TEST_HEX_TEMPORARY_BYTE
     and #$0F
     jmp text_put_hex_nibble_a
 
@@ -654,11 +668,11 @@ text_put_hex_nibble_a:
 
 text_putc_a:
     phy
-    ldx TEXT_CUR_COL
-    ldy TEXT_CUR_ROW
-    jsr display_text_write_char_normal_clipped
+    ldx CH
+    ldy CV
+    jsr display_text_write_char_clipped
     ply
-    inc TEXT_CUR_COL
+    inc CH
     rts
 
 msg_banner:
