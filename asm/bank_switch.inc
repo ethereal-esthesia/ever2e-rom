@@ -63,6 +63,7 @@ BANK_SWITCH_EXT_AN2        = $20
 
 BANK_SWITCH_COMMON_RESET_STATE = $00
 BANK_SWITCH_EXT_RESET_STATE    = BANK_SWITCH_EXT_INTCXROM
+BANK_SWITCH_TRAMP             = $0300
 
 .segment "CODE"
 
@@ -120,32 +121,130 @@ bank_switch_apply_common_state:
     sta $C008
     stx BANK_SWITCH_COMMON_STATE
 
-    txa
-    and #BANK_SWITCH_COMMON_RAMRD
-    beq @ramrd_off
-    sta $C003
-    jmp @ramwrt_check
-@ramrd_off:
+    lda #$00
     sta $C002
-
-@ramwrt_check:
-    txa
-    and #BANK_SWITCH_COMMON_RAMWRT
-    beq @ramwrt_off
-    sta $C005
-    jmp @lc_check
-@ramwrt_off:
     sta $C004
 
-@lc_check:
-    jsr bank_switch_apply_lc_common_main
+    ldx #$00
+@copy_common_loop:
+    lda bank_switch_common_tramp_start,x
+    sta BANK_SWITCH_TRAMP,x
+    inx
+    cpx #(bank_switch_common_tramp_end - bank_switch_common_tramp_start)
+    bne @copy_common_loop
+
+    lda #$00
+    sta $C005
+    ldx #$00
+@copy_common_aux_loop:
+    lda bank_switch_common_tramp_start,x
+    sta BANK_SWITCH_TRAMP,x
+    inx
+    cpx #(bank_switch_common_tramp_end - bank_switch_common_tramp_start)
+    bne @copy_common_aux_loop
+    lda #$00
+    sta $C004
+
+    ldx BANK_SWITCH_COMMON_STATE
+    jmp BANK_SWITCH_TRAMP
+
+; bank_switch_common_tramp_start
+; Args:      X = BANK_SWITCH_COMMON_STATE, Y = original $C016 read
+; Clobbers:  A, X, Y, flags, $FC/$FD in main ZP
+; Returns:   RTS directly to the original caller
+bank_switch_common_tramp_start:
+    lda #$00
+    sta $C002
+    sta $C004
 
     txa
+    and #BANK_SWITCH_COMMON_LC_BANK1
+    beq @c_bank2
+
+@c_bank1:
+    txa
+    and #BANK_SWITCH_COMMON_LC_WRITE
+    beq @c_bank1_nowrite
+    txa
+    and #BANK_SWITCH_COMMON_LC_READ_RAM
+    beq @c_bank1_rom_write
+    sta $C08B
+    sta $C08B
+    bra @c_mark_prewrite_on
+@c_bank1_rom_write:
+    sta $C089
+    sta $C089
+    bra @c_mark_prewrite_on
+@c_bank1_nowrite:
+    txa
+    and #BANK_SWITCH_COMMON_LC_READ_RAM
+    beq @c_bank1_rom_nowrite
+    sta $C088
+    bra @c_mark_prewrite_off
+@c_bank1_rom_nowrite:
+    sta $C08A
+    bra @c_mark_prewrite_off
+
+@c_bank2:
+    txa
+    and #BANK_SWITCH_COMMON_LC_WRITE
+    beq @c_bank2_nowrite
+    txa
+    and #BANK_SWITCH_COMMON_LC_READ_RAM
+    beq @c_bank2_rom_write
+    sta $C083
+    sta $C083
+    bra @c_mark_prewrite_on
+@c_bank2_rom_write:
+    sta $C081
+    sta $C081
+    bra @c_mark_prewrite_on
+@c_bank2_nowrite:
+    txa
+    and #BANK_SWITCH_COMMON_LC_READ_RAM
+    beq @c_bank2_rom_nowrite
+    sta $C080
+    bra @c_mark_prewrite_off
+@c_bank2_rom_nowrite:
+    sta $C082
+    bra @c_mark_prewrite_off
+
+@c_mark_prewrite_on:
+    lda BANK_SWITCH_EXT_STATE
+    ora #BANK_SWITCH_EXT_LC_PREWRITE
+    sta BANK_SWITCH_EXT_STATE
+    bra @c_after_lc
+
+@c_mark_prewrite_off:
+    lda BANK_SWITCH_EXT_STATE
+    and #($FF ^ BANK_SWITCH_EXT_LC_PREWRITE)
+    sta BANK_SWITCH_EXT_STATE
+
+@c_after_lc:
+    txa
+    and #BANK_SWITCH_COMMON_RAMRD
+    beq @c_ramrd_off
+    sta $C003
+    bra @c_ramwrt_check
+@c_ramrd_off:
+    sta $C002
+
+@c_ramwrt_check:
+    txa
+    and #BANK_SWITCH_COMMON_RAMWRT
+    beq @c_ramwrt_off
+    sta $C005
+    bra @c_altzp_check
+@c_ramwrt_off:
+    sta $C004
+
+@c_altzp_check:
+    txa
     and #BANK_SWITCH_COMMON_ALTZP
-    beq @want_main
+    beq @c_want_main
 
     tya
-    bmi @return_aux
+    bmi @c_return_aux
 
     ; Caller entered on main stack; move return to aux stack before returning.
     pla
@@ -160,14 +259,14 @@ bank_switch_apply_common_state:
     pha
     rts
 
-@return_aux:
+@c_return_aux:
     lda #$00
     sta $C009
     rts
 
-@want_main:
+@c_want_main:
     tya
-    bpl @return_main
+    bpl @c_return_main
 
     ; Caller entered on aux stack; move return to main stack before returning.
     lda #$00
@@ -184,8 +283,10 @@ bank_switch_apply_common_state:
     pha
     rts
 
-@return_main:
+@c_return_main:
     rts
+
+bank_switch_common_tramp_end:
 
 ; bank_switch_apply_extended_state
 ; Args:      A = new extended bank state byte for $FC
@@ -241,186 +342,169 @@ bank_switch_apply_extended_state:
     sta $C008
     stx BANK_SWITCH_EXT_STATE
 
+    lda #$00
+    sta $C002
+    sta $C004
+
+    ldx #$00
+@copy_extended_loop:
+    lda bank_switch_extended_tramp_start,x
+    sta BANK_SWITCH_TRAMP,x
+    inx
+    cpx #(bank_switch_extended_tramp_end - bank_switch_extended_tramp_start)
+    bne @copy_extended_loop
+
+    lda #$00
+    sta $C005
+    ldx #$00
+@copy_extended_aux_loop:
+    lda bank_switch_extended_tramp_start,x
+    sta BANK_SWITCH_TRAMP,x
+    inx
+    cpx #(bank_switch_extended_tramp_end - bank_switch_extended_tramp_start)
+    bne @copy_extended_aux_loop
+    lda #$00
+    sta $C004
+
+    ldx BANK_SWITCH_EXT_STATE
+    jmp BANK_SWITCH_TRAMP
+
+; bank_switch_extended_tramp_start
+; Args:      X = BANK_SWITCH_EXT_STATE, Y = original $C016 read
+; Clobbers:  A, X, Y, flags, $FC in main ZP
+; Returns:   RTS directly to the original caller
+bank_switch_extended_tramp_start:
     txa
     and #BANK_SWITCH_EXT_INTCXROM
-    beq @intcxrom_off
+    beq @e_intcxrom_off
     sta $C007
-    jmp @intc8_check
-@intcxrom_off:
+    bra @e_intc8_check
+@e_intcxrom_off:
     sta $C006
 
-@intc8_check:
+@e_intc8_check:
     txa
     and #BANK_SWITCH_EXT_INTC8ROM
-    beq @intc8_off
+    beq @e_intc8_off
     sta $C00A
     bit $C300
     sta $C00B
-    jmp @prewrite_check
-@intc8_off:
+    bra @e_prewrite_check
+@e_intc8_off:
     sta $CFFF
 
-@prewrite_check:
-    jsr bank_switch_apply_extended_prewrite_main
-
-    txa
-    and #BANK_SWITCH_EXT_AN0
-    beq @an0_off
-    sta $C059
-    jmp @an1_check
-@an0_off:
-    sta $C058
-
-@an1_check:
-    txa
-    and #BANK_SWITCH_EXT_AN1
-    beq @an1_off
-    sta $C05B
-    jmp @an2_check
-@an1_off:
-    sta $C05A
-
-@an2_check:
-    txa
-    and #BANK_SWITCH_EXT_AN2
-    beq @an2_off
-    sta $C05D
-    jmp @restore_altzp
-@an2_off:
-    sta $C05C
-
-@restore_altzp:
-    tya
-    bpl @done
+@e_prewrite_check:
     lda #$00
-    sta $C009
-@done:
-    rts
+    sta $C002
+    sta $C004
 
-; bank_switch_apply_lc_common_main
-; Args:      X = BANK_SWITCH_COMMON_STATE (main ZP already active)
-; Clobbers:  A, flags, $FC bit 2 in main ZP
-; Returns:   RTS
-bank_switch_apply_lc_common_main:
-    txa
-    and #BANK_SWITCH_COMMON_LC_BANK1
-    beq @bank2
-
-@bank1:
-    txa
-    and #BANK_SWITCH_COMMON_LC_WRITE
-    beq @bank1_nowrite
-    txa
-    and #BANK_SWITCH_COMMON_LC_READ_RAM
-    beq @bank1_rom_write
-    sta $C08B
-    sta $C08B
-    jmp bank_switch_mark_prewrite_on_main
-@bank1_rom_write:
-    sta $C089
-    sta $C089
-    jmp bank_switch_mark_prewrite_on_main
-@bank1_nowrite:
-    txa
-    and #BANK_SWITCH_COMMON_LC_READ_RAM
-    beq @bank1_rom_nowrite
-    sta $C088
-    jmp bank_switch_mark_prewrite_off_main
-@bank1_rom_nowrite:
-    sta $C08A
-    jmp bank_switch_mark_prewrite_off_main
-
-@bank2:
-    txa
-    and #BANK_SWITCH_COMMON_LC_WRITE
-    beq @bank2_nowrite
-    txa
-    and #BANK_SWITCH_COMMON_LC_READ_RAM
-    beq @bank2_rom_write
-    sta $C083
-    sta $C083
-    jmp bank_switch_mark_prewrite_on_main
-@bank2_rom_write:
-    sta $C081
-    sta $C081
-    jmp bank_switch_mark_prewrite_on_main
-@bank2_nowrite:
-    txa
-    and #BANK_SWITCH_COMMON_LC_READ_RAM
-    beq @bank2_rom_nowrite
-    sta $C080
-    jmp bank_switch_mark_prewrite_off_main
-@bank2_rom_nowrite:
-    sta $C082
-    jmp bank_switch_mark_prewrite_off_main
-
-; bank_switch_apply_extended_prewrite_main
-; Args:      X = BANK_SWITCH_EXT_STATE (main ZP already active)
-; Clobbers:  A, flags, $FC bit 2 in main ZP
-; Returns:   RTS
-bank_switch_apply_extended_prewrite_main:
     lda BANK_SWITCH_COMMON_STATE
     and #BANK_SWITCH_COMMON_LC_WRITE
-    bne @force_prewrite_on
+    bne @e_force_prewrite_on
 
     txa
     and #BANK_SWITCH_EXT_LC_PREWRITE
-    beq @clear_prewrite
+    beq @e_clear_prewrite
 
     lda BANK_SWITCH_COMMON_STATE
     and #(BANK_SWITCH_COMMON_LC_BANK1 | BANK_SWITCH_COMMON_LC_READ_RAM)
     cmp #(BANK_SWITCH_COMMON_LC_BANK1 | BANK_SWITCH_COMMON_LC_READ_RAM)
-    beq @bank1_ram_prewrite
+    beq @e_bank1_ram_prewrite
     cmp #BANK_SWITCH_COMMON_LC_BANK1
-    beq @bank1_rom_prewrite
+    beq @e_bank1_rom_prewrite
     cmp #BANK_SWITCH_COMMON_LC_READ_RAM
-    beq @bank2_ram_prewrite
+    beq @e_bank2_ram_prewrite
     sta $C081
-    rts
-@bank1_ram_prewrite:
+    bra @e_after_prewrite
+@e_bank1_ram_prewrite:
     sta $C08B
-    rts
-@bank1_rom_prewrite:
+    bra @e_after_prewrite
+@e_bank1_rom_prewrite:
     sta $C089
-    rts
-@bank2_ram_prewrite:
+    bra @e_after_prewrite
+@e_bank2_ram_prewrite:
     sta $C083
-    rts
+    bra @e_after_prewrite
 
-@clear_prewrite:
+@e_clear_prewrite:
     lda BANK_SWITCH_COMMON_STATE
     and #(BANK_SWITCH_COMMON_LC_BANK1 | BANK_SWITCH_COMMON_LC_READ_RAM)
     cmp #(BANK_SWITCH_COMMON_LC_BANK1 | BANK_SWITCH_COMMON_LC_READ_RAM)
-    beq @bank1_ram_clear
+    beq @e_bank1_ram_clear
     cmp #BANK_SWITCH_COMMON_LC_BANK1
-    beq @bank1_rom_clear
+    beq @e_bank1_rom_clear
     cmp #BANK_SWITCH_COMMON_LC_READ_RAM
-    beq @bank2_ram_clear
+    beq @e_bank2_ram_clear
     sta $C082
-    rts
-@bank1_ram_clear:
+    bra @e_after_prewrite
+@e_bank1_ram_clear:
     sta $C088
-    rts
-@bank1_rom_clear:
+    bra @e_after_prewrite
+@e_bank1_rom_clear:
     sta $C08A
-    rts
-@bank2_ram_clear:
+    bra @e_after_prewrite
+@e_bank2_ram_clear:
     sta $C080
-    rts
+    bra @e_after_prewrite
 
-@force_prewrite_on:
-    jmp bank_switch_mark_prewrite_on_main
-
-bank_switch_mark_prewrite_on_main:
+@e_force_prewrite_on:
     lda BANK_SWITCH_EXT_STATE
     ora #BANK_SWITCH_EXT_LC_PREWRITE
     sta BANK_SWITCH_EXT_STATE
+
+@e_after_prewrite:
+    lda BANK_SWITCH_COMMON_STATE
+    and #BANK_SWITCH_COMMON_RAMRD
+    beq @e_ramrd_off
+    sta $C003
+    bra @e_ramwrt_check
+@e_ramrd_off:
+    sta $C002
+
+@e_ramwrt_check:
+    lda BANK_SWITCH_COMMON_STATE
+    and #BANK_SWITCH_COMMON_RAMWRT
+    beq @e_ramwrt_off
+    sta $C005
+    bra @e_an0_check
+@e_ramwrt_off:
+    sta $C004
+
+@e_an0_check:
+    txa
+    and #BANK_SWITCH_EXT_AN0
+    beq @e_an0_off
+    sta $C059
+    bra @e_an1_check
+@e_an0_off:
+    sta $C058
+
+@e_an1_check:
+    txa
+    and #BANK_SWITCH_EXT_AN1
+    beq @e_an1_off
+    sta $C05B
+    bra @e_an2_check
+@e_an1_off:
+    sta $C05A
+
+@e_an2_check:
+    txa
+    and #BANK_SWITCH_EXT_AN2
+    beq @e_an2_off
+    sta $C05D
+    bra @e_restore_altzp
+@e_an2_off:
+    sta $C05C
+
+@e_restore_altzp:
+    tya
+    bpl @e_done
+    lda #$00
+    sta $C009
+@e_done:
     rts
 
-bank_switch_mark_prewrite_off_main:
-    lda BANK_SWITCH_EXT_STATE
-    and #($FF ^ BANK_SWITCH_EXT_LC_PREWRITE)
-    sta BANK_SWITCH_EXT_STATE
-    rts
+bank_switch_extended_tramp_end:
 
 .endif

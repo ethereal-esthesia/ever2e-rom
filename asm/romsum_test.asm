@@ -1,13 +1,9 @@
 ; Standalone checksum test harness for `romsum_range`.
 ;
 ; Edit `TEST_START` / `TEST_END` to choose the inclusive address range.
-; Set `TEST_BANK_MODE` to one of:
-; - `ROMSUM_BANK_ROM`
-; - `ROMSUM_BANK_LC_BANK1`
-; - `ROMSUM_BANK_LC_BANK2`
-;
-; The helper tracks the current bank mode, saves it, applies the requested
-; mode for the checksum, then restores the saved mode afterward.
+; Set `TEST_COMMON_BANK_STATE` to the common bank-routing state you want active
+; before the checksum runs. Banking is managed by `bank_switch.inc`; the checksum
+; helper itself now just sums the active address window.
 ; On reset, the routine computes the checksum, prints it via monitor ROM,
 ; then idles forever so the result stays visible.
 
@@ -19,11 +15,13 @@ TEST_END   = $FFFF
 .segment "CODE"
 .include "romsum_f800ffff.inc"
 
-TEST_BANK_MODE = ROMSUM_BANK_ROM
+TEST_COMMON_BANK_STATE = BANK_SWITCH_COMMON_RESET_STATE
 
 reset:
-    lda #ROMSUM_BANK_ROM
-    jsr romsum_bank_apply_a
+    lda #BANK_SWITCH_EXT_RESET_STATE
+    jsr bank_switch_apply_extended_state
+    lda #TEST_COMMON_BANK_STATE
+    jsr bank_switch_apply_common_state
 
     lda #<TEST_START
     sta ROMSUM_PTR_LO
@@ -35,9 +33,7 @@ reset:
     lda #>TEST_END
     sta ROMSUM_END_HI
 
-    lda #TEST_BANK_MODE
-    jsr romsum_bank_request_a
-    jsr romsum_range_banked
+    jsr romsum_range
 
 @idle:
     jmp @idle

@@ -5,6 +5,7 @@ ROOT := $(dir $(abspath $(lastword $(MAKEFILE_LIST))))
 OUT_DIR := $(ROOT)build
 ROM_DIR := $(ROOT)ROMS
 PROFILE := $(ROOT)profiles/Apple2eEver2eBootLoopNoSlots.emu
+SWITCH_TEST_PROFILE := $(ROOT)profiles/Apple2eBankSwitchChecksumTestNoSlots.emu
 JVM_DIR ?= /Users/shane/Project/ever2e-jvm
 JVM_P6_TEST_FILTER ?= test.cpu.Cpu65c02CycleTimingTest
 JVM_P6_DISK_FILTER ?= test.device.DiskIISlotRomSignatureTest
@@ -29,8 +30,13 @@ ROM := $(ROM_DIR)/EVER2E.ROM
 MAP := $(OUT_DIR)/EVER2E.map
 LBL := $(OUT_DIR)/EVER2E.lbl
 CHECKSUM_FILE := $(ROM_DIR)/checksum.txt
+SWITCH_TEST_SRC := $(ROOT)asm/bank_switch_checksum_test.asm
+SWITCH_TEST_OBJ := $(OUT_DIR)/bank_switch_checksum_test.o
+SWITCH_TEST_ROM := $(ROM_DIR)/BANK_SWITCH_CHECKSUM_TEST.ROM
+SWITCH_TEST_MAP := $(OUT_DIR)/BANK_SWITCH_CHECKSUM_TEST.map
+SWITCH_TEST_LBL := $(OUT_DIR)/BANK_SWITCH_CHECKSUM_TEST.lbl
 
-.PHONY: all build run clean toolcheck test-p6 p6-roms
+.PHONY: all build build-switch-test run run-switch-test clean toolcheck test-p6 p6-roms
 
 all: build
 
@@ -50,6 +56,12 @@ $(OUT_DIR)/%.o: $(ROOT)asm/%.asm $(wildcard $(ROOT)asm/*.inc) | $(OUT_DIR)
 $(ROM): $(OBJ) $(CFG) | $(ROM_DIR)
 	$(LD65) -C $(CFG) -o $@ $(OBJ) -m $(MAP) -Ln $(LBL)
 
+$(SWITCH_TEST_OBJ): $(SWITCH_TEST_SRC) $(wildcard $(ROOT)asm/*.inc) | $(OUT_DIR)
+	$(CA65) -t none -g -o $@ $<
+
+$(SWITCH_TEST_ROM): $(SWITCH_TEST_OBJ) $(CFG) | $(ROM_DIR)
+	$(LD65) -C $(CFG) -o $@ $(SWITCH_TEST_OBJ) -m $(SWITCH_TEST_MAP) -Ln $(SWITCH_TEST_LBL)
+
 $(CHECKSUM_FILE): $(ROM) | $(ROM_DIR)
 	@crc_hex="$$(python3 -c 'import zlib,sys; d=open(sys.argv[1], "rb").read(); print(f"{zlib.crc32(d)&0xffffffff:08x}")' "$(ROM)")"; \
 	sha1_hex="$$(shasum -a 1 "$(ROM)" | awk '{print $$1}')"; \
@@ -68,8 +80,16 @@ build: toolcheck $(ROM) $(CHECKSUM_FILE)
 	@echo "labels:$(LBL)"
 	@echo "checksums:$(CHECKSUM_FILE)"
 
+build-switch-test: toolcheck $(SWITCH_TEST_ROM)
+	@echo "built: $(SWITCH_TEST_ROM)"
+	@echo "map:   $(SWITCH_TEST_MAP)"
+	@echo "labels:$(SWITCH_TEST_LBL)"
+
 run: build
 	cd $(JVM_DIR) && ./gradlew run --args="$(PROFILE) $(ARGS)"
+
+run-switch-test: build-switch-test
+	cd $(JVM_DIR) && ./gradlew run --args="$(SWITCH_TEST_PROFILE) $(ARGS)"
 
 .PHONY: test-p6-precheck test-p6-py test-p6-jvm
 
