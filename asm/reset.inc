@@ -16,5 +16,6 @@ reset:
     ; Fill all writable main RAM except text pages with NUL.
     lda #$00
     jsr clear_ram_unrolled_fast
+    jsr rng_seed_default
     ; Startup chirp.
     jsr babeep

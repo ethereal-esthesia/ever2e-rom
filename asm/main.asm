@@ -12,6 +12,7 @@
 .include "display.inc"
 .include "dhgr.inc"
 .include "get_key.inc"
+.include "rng.inc"
 .include "reset.inc"
 
 ; Keep the demo cursor in regular main RAM so $00-$0F stays available as
