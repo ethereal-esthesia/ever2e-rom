@@ -23,6 +23,8 @@ EVER2E_RNG_INC = 1
 ; State:
 ; - Persistent RNG state lives in regular main RAM, not ZP, so the repo keeps
 ;   `$FC-$FE` as the only always-live shared ZP control bytes.
+; - The helper also records the last 16-bit user seed it accepted so tests and
+;   diagnostics can display the actual seed in use.
 
 .setcpu "65C02"
 
@@ -34,6 +36,8 @@ EVER2E_RNG_INC = 1
 .export rng_seed_default
 .export rng_next_mixed_a
 
+RNG_LAST_SEED_LO_MAIN_RAM   = $0C10
+RNG_LAST_SEED_HI_MAIN_RAM   = $0C11
 RNG_WEYL_STATE_MAIN_RAM      = $0C3E
 RNG_XORSHIFT_STATE_MAIN_RAM  = $0C3F
 RNG_XORSHIFT_WORK_BYTE       = ZP_SCRATCH_0
@@ -51,6 +55,8 @@ rng_seed_default:
     ; Fall through so the default seed path and explicit seed path stay identical.
 
 rng_seed_ax:
+    sta RNG_LAST_SEED_LO_MAIN_RAM
+    stx RNG_LAST_SEED_HI_MAIN_RAM
     sta RNG_WEYL_STATE_MAIN_RAM
     phx
     jsr rng_next_weyl_byte_a
