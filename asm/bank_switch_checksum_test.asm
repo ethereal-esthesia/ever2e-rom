@@ -12,8 +12,11 @@ TEST_PATTERN_WORK_BYTE = $0C26
 TEST_RESULT_OFFSET_WORK_BYTE = $0C27
 TEST_HEX_TEMPORARY_BYTE    = $0C2A
 
-TEST_STRING_POINTER_LO = ZP_SCRATCH_D
-TEST_STRING_POINTER_HI = ZP_SCRATCH_E
+TEST_LABEL_PADDING_FOR_11_CHARACTER_FIELD = 2
+TEST_LABEL_PADDING_FOR_10_CHARACTER_FIELD = 3
+TEST_LABEL_PADDING_FOR_9_CHARACTER_FIELD  = 4
+TEST_LABEL_PADDING_FOR_8_CHARACTER_FIELD  = 5
+TEST_LABEL_PADDING_FOR_6_CHARACTER_FIELD  = 7
 
 TEST_WORKER_TRAMP = $0800
 ROMSUM_WORKER_TRAMP = $0900
@@ -37,15 +40,18 @@ reset:
 
     lda #<msg_banner
     ldx #>msg_banner
+    ldy #$00
     jsr print_string_ax
 
     lda #<msg_status
     ldx #>msg_status
+    ldy #$00
     jsr print_string_ax
     jsr run_status_tests
 
     lda #<msg_checksum
     ldx #>msg_checksum
+    ldy #$00
     jsr print_string_ax
     jsr run_checksum_tests
 
@@ -132,6 +138,7 @@ common_status_bank1:
     jsr bank_switch_apply_common_state
     lda #<msg_bank1_status
     ldx #>msg_bank1_status
+    ldy #TEST_LABEL_PADDING_FOR_10_CHARACTER_FIELD
     jmp print_status_line_ax
 
 common_status_lcram:
@@ -146,6 +153,7 @@ common_status_lcram:
     jsr bank_switch_apply_common_state
     lda #<msg_lcram_status
     ldx #>msg_lcram_status
+    ldy #TEST_LABEL_PADDING_FOR_10_CHARACTER_FIELD
     jmp print_status_line_ax
 
 common_status_ramrd:
@@ -161,6 +169,7 @@ common_status_ramrd:
     jsr bank_switch_apply_common_state
     lda #<msg_ramrd_status
     ldx #>msg_ramrd_status
+    ldy #TEST_LABEL_PADDING_FOR_10_CHARACTER_FIELD
     jmp print_status_line_ax
 
 common_status_ramwrt:
@@ -179,6 +188,7 @@ common_status_ramwrt:
     jsr bank_switch_apply_common_state
     lda #<msg_ramwrt_status
     ldx #>msg_ramwrt_status
+    ldy #TEST_LABEL_PADDING_FOR_11_CHARACTER_FIELD
     jmp print_status_line_ax
 
 common_status_altzp:
@@ -194,6 +204,7 @@ common_status_altzp:
     jsr bank_switch_common_reset
     lda #<msg_altzp_status
     ldx #>msg_altzp_status
+    ldy #TEST_LABEL_PADDING_FOR_10_CHARACTER_FIELD
     jmp print_status_line_ax
 
 common_track_lcwrite:
@@ -209,6 +220,7 @@ common_track_lcwrite:
     jsr bank_switch_apply_common_state
     lda #<msg_lcwrite_track
     ldx #>msg_lcwrite_track
+    ldy #TEST_LABEL_PADDING_FOR_10_CHARACTER_FIELD
     jmp print_status_line_ax
 
 ext_status_intcxrom:
@@ -224,6 +236,7 @@ ext_status_intcxrom:
     jsr bank_switch_apply_extended_state
     lda #<msg_intcxrom_status
     ldx #>msg_intcxrom_status
+    ldy #TEST_LABEL_PADDING_FOR_10_CHARACTER_FIELD
     jmp print_status_line_ax
 
 ext_track_intc8rom:
@@ -239,6 +252,7 @@ ext_track_intc8rom:
     jsr bank_switch_apply_extended_state
     lda #<msg_intc8rom_track
     ldx #>msg_intc8rom_track
+    ldy #TEST_LABEL_PADDING_FOR_8_CHARACTER_FIELD
     jmp print_status_line_ax
 
 ext_track_prewrite:
@@ -254,6 +268,7 @@ ext_track_prewrite:
     jsr bank_switch_apply_extended_state
     lda #<msg_prewrite_track
     ldx #>msg_prewrite_track
+    ldy #TEST_LABEL_PADDING_FOR_9_CHARACTER_FIELD
     jmp print_status_line_ax
 
 ext_track_an0:
@@ -269,6 +284,7 @@ ext_track_an0:
     jsr bank_switch_apply_extended_state
     lda #<msg_an0_track
     ldx #>msg_an0_track
+    ldy #TEST_LABEL_PADDING_FOR_6_CHARACTER_FIELD
     jmp print_status_line_ax
 
 ext_track_an1:
@@ -284,6 +300,7 @@ ext_track_an1:
     jsr bank_switch_apply_extended_state
     lda #<msg_an1_track
     ldx #>msg_an1_track
+    ldy #TEST_LABEL_PADDING_FOR_6_CHARACTER_FIELD
     jmp print_status_line_ax
 
 ext_track_an2:
@@ -299,6 +316,7 @@ ext_track_an2:
     jsr bank_switch_apply_extended_state
     lda #<msg_an2_track
     ldx #>msg_an2_track
+    ldy #TEST_LABEL_PADDING_FOR_6_CHARACTER_FIELD
     jmp print_status_line_ax
 
 checksum_main_aux:
@@ -324,6 +342,7 @@ checksum_main_aux:
     jsr bank_switch_common_reset
     lda #<msg_main_aux_checksum
     ldx #>msg_main_aux_checksum
+    ldy #TEST_LABEL_PADDING_FOR_9_CHARACTER_FIELD
     jmp print_checksum_line_ax
 
 checksum_zp_altzp:
@@ -349,6 +368,7 @@ checksum_zp_altzp:
     jsr bank_switch_common_reset
     lda #<msg_altzp_checksum
     ldx #>msg_altzp_checksum
+    ldy #TEST_LABEL_PADDING_FOR_8_CHARACTER_FIELD
     jmp print_checksum_line_ax
 
 checksum_lc_rom_bank2:
@@ -369,6 +389,7 @@ checksum_lc_rom_bank2:
     jsr bank_switch_apply_common_state
     lda #<msg_lc_rom_bank2_checksum
     ldx #>msg_lc_rom_bank2_checksum
+    ldy #TEST_LABEL_PADDING_FOR_9_CHARACTER_FIELD
     jmp print_checksum_line_ax
 
 checksum_lc_bank2_bank1:
@@ -384,6 +405,7 @@ checksum_lc_bank2_bank1:
     jsr bank_switch_apply_common_state
     lda #<msg_lc_bank2_bank1_checksum
     ldx #>msg_lc_bank2_bank1_checksum
+    ldy #TEST_LABEL_PADDING_FOR_8_CHARACTER_FIELD
     jmp print_checksum_line_ax
 
 set_main_range:
@@ -574,9 +596,7 @@ print_status_line_ax:
     jsr text_begin_line
     plx
     pla
-    jsr text_puts_ax
-    lda #' '
-    jsr text_putc_a
+    jsr display_text_write_null_terminated_string_ax_y_padded
     lda TEST_OUTPUT_BUFFER
     jsr text_put_hex_byte_a
     lda #' '
@@ -592,9 +612,7 @@ print_checksum_line_ax:
     jsr text_begin_line
     plx
     pla
-    jsr text_puts_ax
-    lda #' '
-    jsr text_putc_a
+    jsr display_text_write_null_terminated_string_ax_y_padded
     lda TEST_OUTPUT_BUFFER
     jsr text_put_hex_byte_a
     lda TEST_OUTPUT_BUFFER+1
@@ -614,30 +632,8 @@ print_string_ax:
     jsr text_begin_line
     plx
     pla
-    jsr text_puts_ax
+    jsr display_text_write_null_terminated_string_ax_y_padded
     inc CV
-    rts
-text_puts_ax:
-    sta TEST_STRING_POINTER_LO
-    stx TEST_STRING_POINTER_HI
-    ldy #$00
-@loop:
-    lda (TEST_STRING_POINTER_LO),y
-    beq @done
-    sta TEST_HEX_TEMPORARY_BYTE
-    lda TEST_STRING_POINTER_LO
-    pha
-    lda TEST_STRING_POINTER_HI
-    pha
-    lda TEST_HEX_TEMPORARY_BYTE
-    jsr text_putc_a
-    pla
-    sta TEST_STRING_POINTER_HI
-    pla
-    sta TEST_STRING_POINTER_LO
-    iny
-    bne @loop
-@done:
     rts
 
 text_begin_line:

@@ -95,23 +95,10 @@ main_show_startup_banner:
     sta INVFLG
     jsr display_text_clear_visible
     jsr display_text_home
-    lda #INVFLG_NORMAL
-    sta INVFLG
-    ldx #$00
-@banner_loop:
-    lda MAIN_STARTUP_BANNER_TEXT,x
-    beq @done
-    phx
-    ldx CH
-    ldy CV
-    jsr display_text_write_char_clipped
-    plx
-    inc CH
-    inx
-    bne @banner_loop
-@done:
-    lda #INVFLG_INVERSE
-    sta INVFLG
+    lda #<MAIN_STARTUP_BANNER_TEXT
+    ldx #>MAIN_STARTUP_BANNER_TEXT
+    ldy #$00
+    jsr display_text_write_null_terminated_string_ax_y_padded
     rts
 
 ; nmi
