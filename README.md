@@ -183,9 +183,12 @@ the repo's assembly files. Treat this file as the current low-level ROM contract
 for zero-page ownership and persistent bank/display state shared by the ROMs in
 this repo. Code that wants to participate in the main runtime contract should use
 these definitions and the bank/display helpers instead of inventing private
-persistent ZP state or directly poking tracked soft-switches. The intent is to
-keep this layout reusable across the ROM variants in this repo while still
-staying reasonably compatible with stock-style Apple IIe ROM work where practical.
+persistent ZP state or directly poking tracked soft-switches. Prefer the shared
+`set/reset` helpers for tracked mode changes; they now fast-path the hot
+`RAMRD`/`RAMWRT` cases so callers can keep using the same safe API even for
+frequent temporary routing changes. The intent is to keep this layout reusable
+across the ROM variants in this repo while still staying reasonably compatible
+with stock-style Apple IIe ROM work where practical.
 
 The table below reflects the shared layout currently defined there.
 
@@ -195,7 +198,7 @@ The table below reflects the shared layout currently defined there.
 | `$24` | `CH` | Text cursor column. This repo keeps the Apple stock name `CH`, but treat it as the shared text cursor column byte. |
 | `$25` | `CV` | Text cursor row. This repo keeps the Apple stock name `CV`, but treat it as the shared text cursor row byte. |
 | `$32` | `INVFLG` | Text attribute flag. This repo keeps the Apple stock name `INVFLG`; `INVFLG_NORMAL` (`$FF`), `INVFLG_FLASH` (`$7F`), and `INVFLG_INVERSE` (`$3F`) follow the Apple monitor/Applesoft convention. |
-| `$FC` | `BANK_SWITCH_EXT_STATE` | Persistent extended bank state in main ZP: `INTCXROM`, `INTC8ROM`, LC prewrite latch, `AN0-AN2` |
+| `$FC` | `BANK_SWITCH_EXT_STATE` | Persistent extended bank state in main ZP: `INTCXROM`, `INTC8ROM`, LC prewrite latch, `AN0-AN2`, `SLOTC3ROM` |
 | `$FD` | `BANK_SWITCH_COMMON_STATE` | Persistent common bank state in main ZP: LC read/bank/write plus `RAMRD`, `RAMWRT`, `ALTZP` |
 | `$FE` | `DISPLAY_STATE` | Persistent display state in main ZP: `80STORE`, `PAGE2`, `HIRES`, `TEXT`, `MIXED`, `80COL`, `ALTCHARSET`, `AN3` |
 

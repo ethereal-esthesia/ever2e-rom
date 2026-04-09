@@ -33,7 +33,6 @@
 .export display_apply_state
 .export display_set
 .export display_reset
-.export display_text_fill_pages
 .export display_text_clear_visible
 .export display_text_home
 .export display_text_write_null_terminated_string_ax_y_padded
@@ -191,22 +190,6 @@ display_apply_state:
 @done:
     rts
 
-; display_text_fill_pages
-; Args:      A = raw text byte to store
-; Clobbers:  X, flags (A preserved)
-; Returns:   RTS
-; Range:     $0400-$0BFF (text pages 1 + 2)
-display_text_fill_pages:
-    ldx #$00
-
-@fill_pages_xloop:
-    .repeat $08, I
-        sta $0400 + ($100 * I), x
-    .endrepeat
-    inx
-    bne @fill_pages_xloop
-    rts
-
 ; display_text_clear_visible
 ; Args:      none
 ; Clobbers:  A, X, Y, flags, ZP_SCRATCH_8-ZP_SCRATCH_F
@@ -215,28 +198,90 @@ display_text_fill_pages:
 ; - Clears only the currently visible text page.
 ; - Fills with normal or inverse spaces based on INVFLG bit 7, matching the
 ;   80-column firmware's normal-vs-inverse choice.
+; - Clears line-by-line so 80-column mode can fill the main/aux halves for each
+;   visible row directly instead of routing every single character write.
 display_text_clear_visible:
-    jsr display_text_current_width
-    sta DISPLAY_TEXT_VISIBLE_WIDTH
     jsr display_text_space_from_invflg
     sta DISPLAY_TEXT_SOURCE_CHARACTER
-    ldy #$00
-@clear_row_loop:
-    sty DISPLAY_TEXT_TARGET_ROW
-    ldx #$00
-@clear_col_loop:
-    phx
-    lda DISPLAY_TEXT_SOURCE_CHARACTER
+    stz DISPLAY_TEXT_TARGET_ROW
+
+    bit $C01F
+    bmi @clear_80col
+
+@clear_40col_row:
     ldy DISPLAY_TEXT_TARGET_ROW
-    jsr display_text_write_encoded_char_clipped
-    plx
-    inx
-    cpx DISPLAY_TEXT_VISIBLE_WIDTH
-    bne @clear_col_loop
+    jsr display_text_prepare_row_base_for_visible_page
+    bit $C018
+    bmi @clear_40col_store
+    lda $C014
+    sta DISPLAY_TEXT_SAVED_ROUTE_STATE
+    lda #BANK_SWITCH_COMMON_RAMWRT
+    jsr bank_switch_common_reset
+
+@clear_40col_store:
+    jsr display_text_fill_40_bytes_from_pointer
+    bit $C018
+    bmi @clear_40col_next
+    lda DISPLAY_TEXT_SAVED_ROUTE_STATE
+    bpl @clear_40col_next
+    lda #BANK_SWITCH_COMMON_RAMWRT
+    jsr bank_switch_common_set
+
+@clear_40col_next:
+    inc DISPLAY_TEXT_TARGET_ROW
+    lda DISPLAY_TEXT_TARGET_ROW
+    cmp #24
+    bne @clear_40col_row
+    rts
+
+@clear_80col:
+    bit $C018
+    bmi @clear_80col_page_route
+
+@clear_80col_ram_route_row:
     ldy DISPLAY_TEXT_TARGET_ROW
-    iny
-    cpy #24
-    bne @clear_row_loop
+    jsr display_text_prepare_row_base_for_visible_page
+    lda $C014
+    sta DISPLAY_TEXT_SAVED_ROUTE_STATE
+    lda #BANK_SWITCH_COMMON_RAMWRT
+    jsr bank_switch_common_reset
+    jsr display_text_fill_40_bytes_from_pointer
+    lda #BANK_SWITCH_COMMON_RAMWRT
+    jsr bank_switch_common_set
+    jsr display_text_fill_40_bytes_from_pointer
+    lda DISPLAY_TEXT_SAVED_ROUTE_STATE
+    bmi @clear_80col_restore_ramwrt_on
+    lda #BANK_SWITCH_COMMON_RAMWRT
+    jsr bank_switch_common_reset
+    bra @clear_80col_next
+
+@clear_80col_restore_ramwrt_on:
+    lda #BANK_SWITCH_COMMON_RAMWRT
+    jsr bank_switch_common_set
+    bra @clear_80col_next
+
+@clear_80col_page_route:
+    ldy DISPLAY_TEXT_TARGET_ROW
+    jsr display_text_prepare_row_base_for_visible_page
+    lda $C01C
+    sta DISPLAY_TEXT_SAVED_ROUTE_STATE
+    bit $C054
+    jsr display_text_fill_40_bytes_from_pointer
+    bit $C055
+    jsr display_text_fill_40_bytes_from_pointer
+    lda DISPLAY_TEXT_SAVED_ROUTE_STATE
+    bmi @clear_80col_restore_page2_on
+    bit $C054
+    bra @clear_80col_next
+
+@clear_80col_restore_page2_on:
+    bit $C055
+
+@clear_80col_next:
+    inc DISPLAY_TEXT_TARGET_ROW
+    lda DISPLAY_TEXT_TARGET_ROW
+    cmp #24
+    bne @clear_80col
     rts
 
 ; display_text_home
@@ -400,22 +445,7 @@ display_text_write_encoded_char_clipped:
 
 display_text_write_char_saved:
     ldy DISPLAY_TEXT_TARGET_ROW
-
-    lda DISPLAY_TEXT_ROW_BASE_ADDRESS_LO,y
-    sta DISPLAY_TEXT_POINTER_LO
-    lda DISPLAY_TEXT_ROW_BASE_ADDRESS_HI,y
-    sta DISPLAY_TEXT_POINTER_HI
-
-    bit $C018
-    bmi @base_ready
-    bit $C01C
-    bpl @base_ready
-    clc
-    lda DISPLAY_TEXT_POINTER_HI
-    adc #$04
-    sta DISPLAY_TEXT_POINTER_HI
-
-@base_ready:
+    jsr display_text_prepare_row_base_for_visible_page
     bit $C01F
     bmi @text80
 
@@ -431,7 +461,8 @@ display_text_write_char_saved:
     bmi @write40_now
     lda $C014
     sta DISPLAY_TEXT_SAVED_ROUTE_STATE
-    bit $C004
+    lda #BANK_SWITCH_COMMON_RAMWRT
+    jsr bank_switch_common_reset
 
 @write40_now:
     ldy #$00
@@ -442,7 +473,8 @@ display_text_write_char_saved:
     bmi @text_write_done
     lda DISPLAY_TEXT_SAVED_ROUTE_STATE
     bpl @text_write_done
-    bit $C005
+    lda #BANK_SWITCH_COMMON_RAMWRT
+    jsr bank_switch_common_set
     rts
 
 @text_write_done:
@@ -466,11 +498,13 @@ display_text_write_char_saved:
     lda DISPLAY_TEXT_TARGET_COLUMN
     and #$01
     bne @text80_main_ramwrt
-    bit $C005
+    lda #BANK_SWITCH_COMMON_RAMWRT
+    jsr bank_switch_common_set
     jmp @text80_store_ramwrt
 
 @text80_main_ramwrt:
-    bit $C004
+    lda #BANK_SWITCH_COMMON_RAMWRT
+    jsr bank_switch_common_reset
 
 @text80_store_ramwrt:
     ldy #$00
@@ -478,11 +512,13 @@ display_text_write_char_saved:
     sta (DISPLAY_TEXT_POINTER_LO),y
     lda DISPLAY_TEXT_SAVED_ROUTE_STATE
     bmi @restore_ramwrt_on
-    bit $C004
+    lda #BANK_SWITCH_COMMON_RAMWRT
+    jsr bank_switch_common_reset
     rts
 
 @restore_ramwrt_on:
-    bit $C005
+    lda #BANK_SWITCH_COMMON_RAMWRT
+    jsr bank_switch_common_set
     rts
 
 @text80_page2_route:
@@ -508,6 +544,35 @@ display_text_write_char_saved:
 
 @restore_page2_on:
     bit $C055
+    rts
+
+display_text_prepare_row_base_for_visible_page:
+    lda DISPLAY_TEXT_ROW_BASE_ADDRESS_LO,y
+    sta DISPLAY_TEXT_POINTER_LO
+    lda DISPLAY_TEXT_ROW_BASE_ADDRESS_HI,y
+    sta DISPLAY_TEXT_POINTER_HI
+
+    bit $C018
+    bmi @prepared_row_base
+    bit $C01C
+    bpl @prepared_row_base
+    clc
+    lda DISPLAY_TEXT_POINTER_HI
+    adc #$04
+    sta DISPLAY_TEXT_POINTER_HI
+
+@prepared_row_base:
+    rts
+
+display_text_fill_40_bytes_from_pointer:
+    ldy #$00
+    ldx #40
+    lda DISPLAY_TEXT_SOURCE_CHARACTER
+@fill_40_loop:
+    sta (DISPLAY_TEXT_POINTER_LO),y
+    iny
+    dex
+    bne @fill_40_loop
     rts
 
 display_text_load_invflg_main:

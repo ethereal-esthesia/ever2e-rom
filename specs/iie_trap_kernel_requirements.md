@@ -17,11 +17,13 @@ Current contract:
 - `$00-$0F` is a shared scratch window. Kernel/runtime routines may alias and
   reuse it locally, but must not assume values there survive calls into other
   routines.
-- `$FC` is persistent extended bank state in main zero page.
+- `$FC` is persistent extended bank state in main zero page (`INTCXROM`, `INTC8ROM`, LC prewrite latch, `AN0-AN2`, `SLOTC3ROM`).
 - `$FD` is persistent common bank state in main zero page.
 - `$FE` is persistent display state in main zero page.
 - Bank/display transitions that participate in the shared runtime contract should
   go through the helper layer so the tracked state bytes remain authoritative.
+  Prefer the shared `set/reset` helpers for tracked mode changes; they fast-path
+  the common `RAMRD`/`RAMWRT` flips so callers can keep using one safe API.
 - Any code that bypasses the helpers is outside the shared contract and is
   responsible for reconciling hardware state before returning to kernel-managed
   flow.

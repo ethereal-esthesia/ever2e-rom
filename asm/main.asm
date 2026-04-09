@@ -91,6 +91,8 @@ main_loop:
 ; Clobbers:  A, X, Y, flags
 ; Returns:   RTS
 main_show_startup_banner:
+    lda #(DISPLAY_80STORE | DISPLAY_80COL)
+    jsr display_set
     lda #INVFLG_INVERSE
     sta INVFLG
     jsr display_text_clear_visible
