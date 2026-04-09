@@ -8,7 +8,6 @@
 ; - `romsum_compute_range` sums bytes from an arbitrary inclusive start/end range.
 ; - `romsum_print_sum` prints the current 16-bit checksum in hex (no newline).
 ; - `romsum_range` is a convenience wrapper that computes then prints on its own line.
-; - `romsum_f800ffff` is a convenience wrapper for the original $F800-$FFFF case.
 ; - `romsum_range` prints a newline, then the high byte and low byte in hex,
 ;   then a trailing newline.
 ;
@@ -84,18 +83,3 @@ romsum_range:
     jsr romsum_compute_range
     jsr romsum_print_sum
     jmp MON_CROUT
-
-; romsum_f800ffff
-; Args:      none
-; Clobbers:  A, Y, flags, $00-$05
-; Returns:   $02/$03 = 16-bit checksum, RTS
-romsum_f800ffff:
-    lda #$00
-    sta ROMSUM_PTR_LO
-    lda #$F8
-    sta ROMSUM_PTR_HI
-    lda #$00
-    sta ROMSUM_END_LO
-    lda #$FF
-    sta ROMSUM_END_HI
-    jmp romsum_range

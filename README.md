@@ -177,6 +177,33 @@ This repo is wired for a fast `ca65/ld65` loop targeting Apple IIe 16KB ROM imag
 - Checksum output: `ROMS/checksum.txt` (MAME internal hash format)
 - Build artifacts: `build/`
 
+### RNG helper
+`asm/rng.inc` provides the current shared fast PRNG helper.
+
+- High byte: 8-bit Weyl sequence with increment `RNG_WEYL_INCREMENT = $9D`
+- Low byte: 8-bit maximal-period xorshift sequence
+- Seed entry:
+  - `rng_seed_weyl_a`: caller provides the Weyl seed in `A`
+  - `rng_seed_default`: uses Weyl seed `0`
+- Seeding rule:
+  - the first Weyl return value becomes the initial xorshift seed
+  - with the default Weyl seed `0`, that first Weyl value is `$9D`
+  - if that first Weyl value would be `0`, the helper substitutes `$01` so the
+    xorshift state never enters its invalid all-zero state
+- Output entry:
+  - `rng_next_mixed_a`: returns `A = (Weyl byte XOR xorshift byte)`
+
+Cycle lengths:
+
+| Generator | State size | Cycle length |
+|---|---|---|
+| 8-bit Weyl (`+$9D`) | 1 byte | `256` |
+| 8-bit xorshift | 1 byte | `255` (all nonzero states) |
+| Combined mixed-byte output | 2 bytes | `65,280` |
+
+The combined cycle is `lcm(256, 255) = 65,280`, which is the practical repeat
+length for the mixed returned byte sequence before the joint state repeats.
+
 ### Zero-page map
 `asm/bank_switch.inc` is the canonical home for named zero-page allocations used by
 the repo's assembly files. Treat this file as the current low-level ROM contract

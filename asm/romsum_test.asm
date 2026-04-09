@@ -13,6 +13,7 @@ TEST_START = $F800
 TEST_END   = $FFFF
 
 .segment "CODE"
+.include "display.inc"
 .include "romsum_f800ffff.inc"
 
 TEST_COMMON_BANK_STATE = BANK_SWITCH_COMMON_RESET_STATE
@@ -22,6 +23,12 @@ reset:
     jsr bank_switch_apply_extended_state
     lda #TEST_COMMON_BANK_STATE
     jsr bank_switch_apply_common_state
+    lda #DISPLAY_RESET_STATE
+    jsr display_apply_state
+    lda #INVFLG_NORMAL
+    sta INVFLG
+    jsr display_text_clear_visible
+    jsr display_text_home
 
     lda #<TEST_START
     sta ROMSUM_PTR_LO

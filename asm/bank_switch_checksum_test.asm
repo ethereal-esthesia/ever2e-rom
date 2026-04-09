@@ -34,6 +34,8 @@ LC_TEST_END     = $D00F
 
 reset:
     jsr baseline_all
+    jsr display_text_clear_visible
+    jsr display_text_home
     jsr write_test_patterns
     jsr display_text_clear_visible
     jsr display_text_home
