@@ -35,8 +35,8 @@
 .export display_reset
 .export display_text_fill_pages
 .export display_text_clear_visible
+.export display_text_home
 .export display_text_write_char_clipped
-.export display_text_write_char_normal_clipped
 
 DISPLAY_80STORE   = $01
 DISPLAY_PAGE2     = $02
@@ -49,13 +49,14 @@ DISPLAY_AN3        = $80
 
 DISPLAY_RESET_STATE = DISPLAY_TEXT
 
-DISPLAY_TEXT_PTR_LO = ZP_SCRATCH_8
-DISPLAY_TEXT_PTR_HI = ZP_SCRATCH_9
-DISPLAY_TEXT_CHAR   = ZP_SCRATCH_A
-DISPLAY_TEXT_COL    = ZP_SCRATCH_B
-DISPLAY_TEXT_SAVE   = ZP_SCRATCH_C
-DISPLAY_TEXT_WIDTH  = ZP_SCRATCH_D
-DISPLAY_TEXT_ROW    = ZP_SCRATCH_E
+DISPLAY_TEXT_POINTER_LO = ZP_SCRATCH_8
+DISPLAY_TEXT_POINTER_HI = ZP_SCRATCH_9
+DISPLAY_TEXT_SOURCE_CHARACTER   = ZP_SCRATCH_A
+DISPLAY_TEXT_TARGET_COLUMN    = ZP_SCRATCH_B
+DISPLAY_TEXT_SAVED_ROUTE_STATE   = ZP_SCRATCH_C
+DISPLAY_TEXT_VISIBLE_WIDTH  = ZP_SCRATCH_D
+DISPLAY_TEXT_TARGET_ROW    = ZP_SCRATCH_E
+DISPLAY_TEXT_ATTRIBUTE_MASK   = ZP_SCRATCH_F
 
 .segment "CODE"
 
@@ -207,100 +208,138 @@ display_text_fill_pages:
 
 ; display_text_clear_visible
 ; Args:      none
-; Clobbers:  A, X, Y, flags, ZP_SCRATCH_8-ZP_SCRATCH_E
+; Clobbers:  A, X, Y, flags, ZP_SCRATCH_8-ZP_SCRATCH_F
 ; Returns:   RTS
 ; Notes:
 ; - Clears only the currently visible text page.
-; - Fills with normal spaces so the visible screen comes up blank.
+; - Fills with normal or inverse spaces based on INVFLG bit 7, matching the
+;   80-column firmware's normal-vs-inverse choice.
 display_text_clear_visible:
     jsr display_text_current_width
-    sta DISPLAY_TEXT_WIDTH
+    sta DISPLAY_TEXT_VISIBLE_WIDTH
+    jsr display_text_space_from_invflg
+    sta DISPLAY_TEXT_SOURCE_CHARACTER
     ldy #$00
 @clear_row_loop:
-    sty DISPLAY_TEXT_ROW
+    sty DISPLAY_TEXT_TARGET_ROW
     ldx #$00
 @clear_col_loop:
     phx
-    lda #' '
-    ldy DISPLAY_TEXT_ROW
-    jsr display_text_write_char_normal_clipped
+    lda DISPLAY_TEXT_SOURCE_CHARACTER
+    ldy DISPLAY_TEXT_TARGET_ROW
+    jsr display_text_write_encoded_char_clipped
     plx
     inx
-    cpx DISPLAY_TEXT_WIDTH
+    cpx DISPLAY_TEXT_VISIBLE_WIDTH
     bne @clear_col_loop
-    ldy DISPLAY_TEXT_ROW
+    ldy DISPLAY_TEXT_TARGET_ROW
     iny
     cpy #24
     bne @clear_row_loop
     rts
 
+; display_text_home
+; Args:      none
+; Clobbers:  A, Y, flags
+; Returns:   RTS
+; Notes:
+; - Resets the stock text cursor state (`CH`/`CV`) in canonical main ZP.
+display_text_home:
+    lda $C016
+    tay
+    lda #$00
+    sta $C008
+    stz CH
+    stz CV
+    tya
+    bpl @home_done
+    lda #$00
+    sta $C009
+@home_done:
+    rts
+
 ; display_text_write_char_clipped
 ; Args:      A = character, X = clipped column, Y = clipped row
-; Clobbers:  A, X, Y, flags, ZP_SCRATCH_8-ZP_SCRATCH_C
+; Clobbers:  A, X, Y, flags, ZP_SCRATCH_8-ZP_SCRATCH_F
 ; Returns:   RTS
 ; Notes:
 ; - Detects 80-column mode from the IIe 80COL status read at $C01F.
 ; - In 80-column mode, even columns map to auxiliary text memory and odd columns
 ;   map to main text memory, matching the JVM/py display model.
 ; - Coordinates are expected to be pre-clipped by the caller.
-; - This entry defaults to inverse text for stock 40/80-column banner/status use.
 display_text_write_char_clipped:
-    and #$3F
-    jmp display_text_write_char_prepared
+    sta DISPLAY_TEXT_SOURCE_CHARACTER
+    stx DISPLAY_TEXT_TARGET_COLUMN
+    sty DISPLAY_TEXT_TARGET_ROW
 
-; display_text_write_char_normal_clipped
-; Args:      A = character, X = clipped column, Y = clipped row
-; Clobbers:  A, X, Y, flags, ZP_SCRATCH_8-ZP_SCRATCH_C
-; Returns:   RTS
-; Notes:
-; - Writes normal text with bit 7 set, which is the better fit for mixed-case text.
-display_text_write_char_normal_clipped:
+    jsr display_text_load_invflg_main
+    sta DISPLAY_TEXT_ATTRIBUTE_MASK
+
+    lda DISPLAY_TEXT_SOURCE_CHARACTER
     ora #$80
 
-display_text_write_char_prepared:
-    sta DISPLAY_TEXT_CHAR
-    stx DISPLAY_TEXT_COL
+    bit $C01F
+    bmi @encode_80col
+    and DISPLAY_TEXT_ATTRIBUTE_MASK
+    jmp display_text_write_char_prepared
 
-    lda display_text_row_base_lo,y
-    sta DISPLAY_TEXT_PTR_LO
-    lda display_text_row_base_hi,y
-    sta DISPLAY_TEXT_PTR_HI
+@encode_80col:
+    bit DISPLAY_TEXT_ATTRIBUTE_MASK
+    bmi display_text_write_char_prepared
+    and #$7F
+
+display_text_write_char_prepared:
+    sta DISPLAY_TEXT_SOURCE_CHARACTER
+    jmp display_text_write_char_saved
+
+display_text_write_encoded_char_clipped:
+    sta DISPLAY_TEXT_SOURCE_CHARACTER
+    stx DISPLAY_TEXT_TARGET_COLUMN
+    sty DISPLAY_TEXT_TARGET_ROW
+
+display_text_write_char_saved:
+    ldy DISPLAY_TEXT_TARGET_ROW
+
+    lda DISPLAY_TEXT_ROW_BASE_ADDRESS_LO,y
+    sta DISPLAY_TEXT_POINTER_LO
+    lda DISPLAY_TEXT_ROW_BASE_ADDRESS_HI,y
+    sta DISPLAY_TEXT_POINTER_HI
 
     bit $C018
     bmi @base_ready
     bit $C01C
     bpl @base_ready
     clc
-    lda DISPLAY_TEXT_PTR_HI
+    lda DISPLAY_TEXT_POINTER_HI
     adc #$04
-    sta DISPLAY_TEXT_PTR_HI
+    sta DISPLAY_TEXT_POINTER_HI
 
 @base_ready:
     bit $C01F
     bmi @text80
 
-    ldx DISPLAY_TEXT_COL
+    ldx DISPLAY_TEXT_TARGET_COLUMN
     txa
     clc
-    adc DISPLAY_TEXT_PTR_LO
-    sta DISPLAY_TEXT_PTR_LO
+    adc DISPLAY_TEXT_POINTER_LO
+    sta DISPLAY_TEXT_POINTER_LO
     bcc :+
-    inc DISPLAY_TEXT_PTR_HI
+    inc DISPLAY_TEXT_POINTER_HI
 :
     bit $C018
     bmi @write40_now
     lda $C014
-    sta DISPLAY_TEXT_SAVE
+    sta DISPLAY_TEXT_SAVED_ROUTE_STATE
     bit $C004
 
 @write40_now:
     ldy #$00
-    lda DISPLAY_TEXT_CHAR
-    sta (DISPLAY_TEXT_PTR_LO),y
+    lda DISPLAY_TEXT_SOURCE_CHARACTER
+    sta (DISPLAY_TEXT_POINTER_LO),y
 
     bit $C018
     bmi @text_write_done
-    lda DISPLAY_TEXT_SAVE
+    lda DISPLAY_TEXT_SAVED_ROUTE_STATE
     bpl @text_write_done
     bit $C005
     rts
@@ -309,21 +348,21 @@ display_text_write_char_prepared:
     rts
 
 @text80:
-    ldx DISPLAY_TEXT_COL
+    ldx DISPLAY_TEXT_TARGET_COLUMN
     txa
     lsr a
     clc
-    adc DISPLAY_TEXT_PTR_LO
-    sta DISPLAY_TEXT_PTR_LO
+    adc DISPLAY_TEXT_POINTER_LO
+    sta DISPLAY_TEXT_POINTER_LO
     bcc :+
-    inc DISPLAY_TEXT_PTR_HI
+    inc DISPLAY_TEXT_POINTER_HI
 :
     bit $C018
     bmi @text80_page2_route
 
     lda $C014
-    sta DISPLAY_TEXT_SAVE
-    lda DISPLAY_TEXT_COL
+    sta DISPLAY_TEXT_SAVED_ROUTE_STATE
+    lda DISPLAY_TEXT_TARGET_COLUMN
     and #$01
     bne @text80_main_ramwrt
     bit $C005
@@ -334,9 +373,9 @@ display_text_write_char_prepared:
 
 @text80_store_ramwrt:
     ldy #$00
-    lda DISPLAY_TEXT_CHAR
-    sta (DISPLAY_TEXT_PTR_LO),y
-    lda DISPLAY_TEXT_SAVE
+    lda DISPLAY_TEXT_SOURCE_CHARACTER
+    sta (DISPLAY_TEXT_POINTER_LO),y
+    lda DISPLAY_TEXT_SAVED_ROUTE_STATE
     bmi @restore_ramwrt_on
     bit $C004
     rts
@@ -347,8 +386,8 @@ display_text_write_char_prepared:
 
 @text80_page2_route:
     lda $C01C
-    sta DISPLAY_TEXT_SAVE
-    lda DISPLAY_TEXT_COL
+    sta DISPLAY_TEXT_SAVED_ROUTE_STATE
+    lda DISPLAY_TEXT_TARGET_COLUMN
     and #$01
     bne @text80_main_page2
     bit $C055
@@ -359,15 +398,39 @@ display_text_write_char_prepared:
 
 @text80_store_page2:
     ldy #$00
-    lda DISPLAY_TEXT_CHAR
-    sta (DISPLAY_TEXT_PTR_LO),y
-    lda DISPLAY_TEXT_SAVE
+    lda DISPLAY_TEXT_SOURCE_CHARACTER
+    sta (DISPLAY_TEXT_POINTER_LO),y
+    lda DISPLAY_TEXT_SAVED_ROUTE_STATE
     bmi @restore_page2_on
     bit $C054
     rts
 
 @restore_page2_on:
     bit $C055
+    rts
+
+display_text_load_invflg_main:
+    lda $C016
+    tay
+    lda #$00
+    sta $C008
+    lda INVFLG
+    tax
+    tya
+    bpl :+
+    lda #$00
+    sta $C009
+:
+    txa
+    rts
+
+display_text_space_from_invflg:
+    jsr display_text_load_invflg_main
+    bmi @normal_space
+    lda #' '
+    rts
+@normal_space:
+    lda #' ' | $80
     rts
 
 display_text_current_width:
@@ -379,12 +442,12 @@ display_text_current_width:
     lda #80
     rts
 
-display_text_row_base_lo:
+DISPLAY_TEXT_ROW_BASE_ADDRESS_LO:
     .byte <$0400, <$0480, <$0500, <$0580, <$0600, <$0680, <$0700, <$0780
     .byte <$0428, <$04A8, <$0528, <$05A8, <$0628, <$06A8, <$0728, <$07A8
     .byte <$0450, <$04D0, <$0550, <$05D0, <$0650, <$06D0, <$0750, <$07D0
 
-display_text_row_base_hi:
+DISPLAY_TEXT_ROW_BASE_ADDRESS_HI:
     .byte >$0400, >$0480, >$0500, >$0580, >$0600, >$0680, >$0700, >$0780
     .byte >$0428, >$04A8, >$0528, >$05A8, >$0628, >$06A8, >$0728, >$07A8
     .byte >$0450, >$04D0, >$0550, >$05D0, >$0650, >$06D0, >$0750, >$07D0

@@ -16,13 +16,13 @@
 
 ; Keep the demo cursor in regular main RAM so $00-$0F stays available as
 ; shared routine scratch.
-PIXEL_X = $0C00
-PIXEL_Y = $0C01
+MAIN_DEMO_PIXEL_X_COORDINATE = $0C00
+MAIN_DEMO_PIXEL_Y_COORDINATE = $0C01
 
 main_loop:
-    jsr main_show_banner
-    stz PIXEL_X
-    stz PIXEL_Y
+    jsr main_show_startup_banner
+    stz MAIN_DEMO_PIXEL_X_COORDINATE
+    stz MAIN_DEMO_PIXEL_Y_COORDINATE
 
 @wait_key:
     jsr get_key_blocking
@@ -66,43 +66,52 @@ main_loop:
     lda #$01
     jsr dhgr_display
     pla
-    ldx PIXEL_X
-    ldy PIXEL_Y
+    ldx MAIN_DEMO_PIXEL_X_COORDINATE
+    ldy MAIN_DEMO_PIXEL_Y_COORDINATE
     clc                 ; page 1
     jsr dhgr_plot
     
     ; Inner loop: advance X across 0..139.
-    inc PIXEL_X
-    lda PIXEL_X
+    inc MAIN_DEMO_PIXEL_X_COORDINATE
+    lda MAIN_DEMO_PIXEL_X_COORDINATE
     cmp #$8C
     bcc @wait_key
 
     ; Outer loop: when X wraps, advance Y across 0..191.
-    stz PIXEL_X
-    inc PIXEL_Y
-    lda PIXEL_Y
+    stz MAIN_DEMO_PIXEL_X_COORDINATE
+    inc MAIN_DEMO_PIXEL_Y_COORDINATE
+    lda MAIN_DEMO_PIXEL_Y_COORDINATE
     cmp #$C0
     bcc @wait_key
-    stz PIXEL_Y
+    stz MAIN_DEMO_PIXEL_Y_COORDINATE
     jmp @wait_key
 
-; main_show_banner
+; main_show_startup_banner
 ; Args:      none
 ; Clobbers:  A, X, Y, flags
 ; Returns:   RTS
-main_show_banner:
+main_show_startup_banner:
+    lda #INVFLG_INVERSE
+    sta INVFLG
     jsr display_text_clear_visible
+    jsr display_text_home
+    lda #INVFLG_NORMAL
+    sta INVFLG
     ldx #$00
 @banner_loop:
-    lda main_banner,x
+    lda MAIN_STARTUP_BANNER_TEXT,x
     beq @done
     phx
-    ldy #$00
-    jsr display_text_write_char_normal_clipped
+    ldx CH
+    ldy CV
+    jsr display_text_write_char_clipped
     plx
+    inc CH
     inx
     bne @banner_loop
 @done:
+    lda #INVFLG_INVERSE
+    sta INVFLG
     rts
 
 ; nmi
@@ -119,7 +128,7 @@ nmi:
 irq:
     rti
 
-main_banner:
+MAIN_STARTUP_BANNER_TEXT:
     .byte "Ever2e",0
 
 .segment "VECTORS"
