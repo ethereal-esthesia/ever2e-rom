@@ -3,7 +3,14 @@
 
 .setcpu "65C02"
 
+.import bank_switch_common_reset
+.import bank_switch_apply_extended_state
+.import display_apply_state
+
 .export softswitch_reset_optimal
+
+SOFTSWITCH_RESET_EXT_STATE = $41   ; INTCXROM | SLOTC3ROM
+SOFTSWITCH_RESET_DISPLAY_STATE = $08 ; TEXT
 
 .segment "CODE"
 
@@ -15,35 +22,12 @@ softswitch_reset_optimal:
     ; Clear keyboard strobe.
     bit $C010
 
-    ; Ensure 80STORE is cleared (emulator model uses C000 write side effect).
-    lda #$00
-    sta $C000
-
-    ; Main/aux routing: reads+writes from main RAM, main ZP/stack.
-    bit $C002      ; RAMRD off
-    bit $C004      ; RAMWRT off
-    bit $C008      ; ALTZP off
-
-    ; ROM/slot routing.
-    bit $C007      ; INTCXROM on (internal ROM in CNXX)
-    bit $C00B      ; SLOTC3ROM on
-    bit $CFFF      ; clear INTC8ROM latch
-
-    ; Text/video baseline.
-    bit $C00C      ; 80COL off
-    bit $C00E      ; ALTCHARSET off
-    bit $C051      ; TEXT on
-    bit $C052      ; MIXED off
-    bit $C054      ; PAGE2 off (page 1)
-    bit $C056      ; HIRES off
-
-    ; Clear annunciators 0..2 and reset AN3/double-hires off.
-    bit $C058
-    bit $C05A
-    bit $C05C
-    bit $C05F
-
-    ; Language-card baseline: ROM visible, writes disabled.
-    bit $C082
+    ; Reset tracked bank/display state through the shared helper layer.
+    lda #$FF
+    jsr bank_switch_common_reset
+    lda #SOFTSWITCH_RESET_EXT_STATE
+    jsr bank_switch_apply_extended_state
+    lda #SOFTSWITCH_RESET_DISPLAY_STATE
+    jsr display_apply_state
 
     rts

@@ -72,10 +72,12 @@ BANK_SWITCH_EXT_LC_PREWRITE = $04
 BANK_SWITCH_EXT_AN0        = $08
 BANK_SWITCH_EXT_AN1        = $10
 BANK_SWITCH_EXT_AN2        = $20
+BANK_SWITCH_EXT_SLOTC3ROM  = $40
 
 BANK_SWITCH_COMMON_RESET_STATE = $00
-BANK_SWITCH_EXT_RESET_STATE    = BANK_SWITCH_EXT_INTCXROM
+BANK_SWITCH_EXT_RESET_STATE    = BANK_SWITCH_EXT_INTCXROM | BANK_SWITCH_EXT_SLOTC3ROM
 BANK_SWITCH_TRAMP             = $0300
+BANK_SWITCH_COMMON_FAST_MASK  = BANK_SWITCH_COMMON_RAMRD | BANK_SWITCH_COMMON_RAMWRT
 
 .segment "CODE"
 
@@ -93,8 +95,12 @@ bank_switch_common_set:
     txa
     sta $C008
     txa
+    pha
     ora BANK_SWITCH_COMMON_STATE
     tax
+    pla
+    jsr bank_switch_try_fast_common_update
+    bcs @common_set_done
 
     tya
     bpl :+
@@ -103,6 +109,9 @@ bank_switch_common_set:
 :
     txa
     jmp bank_switch_apply_common_state
+
+@common_set_done:
+    rts
 
 bank_switch_common_reset:
     tax
@@ -112,9 +121,13 @@ bank_switch_common_reset:
     txa
     sta $C008
     txa
+    pha
     eor #$FF
     and BANK_SWITCH_COMMON_STATE
     tax
+    pla
+    jsr bank_switch_try_fast_common_update
+    bcs @common_reset_done
 
     tya
     bpl :+
@@ -123,6 +136,54 @@ bank_switch_common_reset:
 :
     txa
     jmp bank_switch_apply_common_state
+
+@common_reset_done:
+    rts
+
+; bank_switch_try_fast_common_update
+; Args:      A = caller mask, X = new common state, Y = original $C016 read
+; Clobbers:  A, X, Y, flags
+; Returns:   carry set if the update was applied inline and ALTZP restored;
+;            carry clear if the caller must fall back to bank_switch_apply_common_state
+; Notes:
+; - The fast path intentionally only handles RAMRD/RAMWRT changes. That keeps
+;   the common "temporary main/aux routing" case simple for callers while still
+;   recording the tracked state in `$FD`.
+bank_switch_try_fast_common_update:
+    and #($FF ^ BANK_SWITCH_COMMON_FAST_MASK)
+    bne @common_try_slow
+
+    stx BANK_SWITCH_COMMON_STATE
+
+    txa
+    and #BANK_SWITCH_COMMON_RAMRD
+    beq @common_try_ramrd_off
+    sta $C003
+    bra @common_try_ramwrt_check
+@common_try_ramrd_off:
+    sta $C002
+
+@common_try_ramwrt_check:
+    txa
+    and #BANK_SWITCH_COMMON_RAMWRT
+    beq @common_try_ramwrt_off
+    sta $C005
+    bra @common_try_restore_altzp
+@common_try_ramwrt_off:
+    sta $C004
+
+@common_try_restore_altzp:
+    tya
+    bpl @common_try_fast_done
+    lda #$00
+    sta $C009
+@common_try_fast_done:
+    sec
+    rts
+
+@common_try_slow:
+    clc
+    rts
 
 bank_switch_apply_common_state:
     tax
@@ -400,10 +461,18 @@ bank_switch_extended_tramp_start:
     beq @e_intc8_off
     sta $C00A
     bit $C300
-    sta $C00B
-    bra @e_prewrite_check
+    bra @e_slotc3rom_check
 @e_intc8_off:
     sta $CFFF
+
+@e_slotc3rom_check:
+    txa
+    and #BANK_SWITCH_EXT_SLOTC3ROM
+    beq @e_slotc3rom_off
+    sta $C00B
+    bra @e_prewrite_check
+@e_slotc3rom_off:
+    sta $C00A
 
 @e_prewrite_check:
     lda #$00

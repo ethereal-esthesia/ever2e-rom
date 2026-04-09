@@ -18,8 +18,8 @@ TEST_LABEL_PADDING_FOR_9_CHARACTER_FIELD  = 4
 TEST_LABEL_PADDING_FOR_8_CHARACTER_FIELD  = 5
 TEST_LABEL_PADDING_FOR_6_CHARACTER_FIELD  = 7
 
-TEST_WORKER_TRAMP = $0800
-ROMSUM_WORKER_TRAMP = $0900
+TEST_WORKER_TRAMP = $0C40
+ROMSUM_WORKER_TRAMP = $0D00
 
 ; Shared test windows:
 ; - $0C00-$0C0F: main/aux RAM write+read routing
@@ -180,10 +180,7 @@ common_status_ramwrt:
     lda #BANK_SWITCH_COMMON_RAMWRT
     jsr bank_switch_common_set
     lda $C014
-    tax
-    lda #$00
-    sta $C004
-    stx TEST_OUTPUT_BUFFER+1
+    sta TEST_OUTPUT_BUFFER+1
     lda #BANK_SWITCH_COMMON_RESET_STATE
     jsr bank_switch_apply_common_state
     lda #<msg_ramwrt_status
@@ -525,13 +522,8 @@ lc_fill_worker_start:
     inx
     cpx #$10
     bne @fill_loop
-    lda #$00
-    sta $C002
-    sta $C004
-    sta $C082
-    lda BANK_SWITCH_EXT_STATE
-    and #($FF ^ BANK_SWITCH_EXT_LC_PREWRITE)
-    sta BANK_SWITCH_EXT_STATE
+    lda #BANK_SWITCH_COMMON_RESET_STATE
+    jsr bank_switch_apply_common_state
     rts
 lc_fill_worker_end:
 
@@ -541,13 +533,8 @@ lc_status_worker_start:
     ldx TEST_RESULT_OFFSET_WORK_BYTE
     lda $C012
     sta TEST_OUTPUT_BUFFER,x
-    lda #$00
-    sta $C002
-    sta $C004
-    sta $C082
-    lda BANK_SWITCH_EXT_STATE
-    and #($FF ^ BANK_SWITCH_EXT_LC_PREWRITE)
-    sta BANK_SWITCH_EXT_STATE
+    lda #BANK_SWITCH_COMMON_RESET_STATE
+    jsr bank_switch_apply_common_state
     rts
 lc_status_worker_end:
 
@@ -580,13 +567,8 @@ lc_checksum_worker_start:
     lda ROMSUM_SUM_LO
     sta TEST_OUTPUT_BUFFER,x
 
-    lda #$00
-    sta $C002
-    sta $C004
-    sta $C082
-    lda BANK_SWITCH_EXT_STATE
-    and #($FF ^ BANK_SWITCH_EXT_LC_PREWRITE)
-    sta BANK_SWITCH_EXT_STATE
+    lda #BANK_SWITCH_COMMON_RESET_STATE
+    jsr bank_switch_apply_common_state
     rts
 lc_checksum_worker_end:
 

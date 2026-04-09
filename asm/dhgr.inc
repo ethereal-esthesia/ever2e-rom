@@ -19,6 +19,8 @@ DHGR_STREAM   = ZP_SCRATCH_2
 DHGR_PTR_LO   = ZP_SCRATCH_3
 DHGR_PTR_HI   = ZP_SCRATCH_4
 DHGR_PHASE    = ZP_SCRATCH_5
+DHGR_SAVED_RAMRD_STATE  = ZP_SCRATCH_6
+DHGR_SAVED_RAMWRT_STATE = ZP_SCRATCH_7
 
 ; dhgr_display
 ; Args:      A = page (1 or 2)
@@ -51,6 +53,11 @@ dhgr_plot_page2:
 ; - ORs white nibble (0x0F) into stream bit range [x*4 .. x*4+3].
 ; - Then XORs with inverse-color masks so final nibble becomes requested color.
 dhgr_plot:
+    lda $C013
+    sta DHGR_SAVED_RAMRD_STATE
+    lda $C014
+    sta DHGR_SAVED_RAMWRT_STATE
+
     ; Consume page-select carry immediately.
     and #$0F
     eor #$0F            ; inverse color nibble (~color & 0x0F)
@@ -135,8 +142,24 @@ dhgr_plot:
     jsr dhgr_store_stream_byte
 
 @done:
-    sta $C002           ; RAMRD -> main
-    sta $C004           ; RAMWRT -> main
+    lda DHGR_SAVED_RAMRD_STATE
+    bmi @restore_ramrd_aux
+    lda #BANK_SWITCH_COMMON_RAMRD
+    jsr bank_switch_common_reset
+    bra @restore_ramwrt
+@restore_ramrd_aux:
+    lda #BANK_SWITCH_COMMON_RAMRD
+    jsr bank_switch_common_set
+
+@restore_ramwrt:
+    lda DHGR_SAVED_RAMWRT_STATE
+    bmi @restore_ramwrt_aux
+    lda #BANK_SWITCH_COMMON_RAMWRT
+    jsr bank_switch_common_reset
+    rts
+@restore_ramwrt_aux:
+    lda #BANK_SWITCH_COMMON_RAMWRT
+    jsr bank_switch_common_set
     rts
 
 ; X = stream index 0..3
@@ -151,12 +174,15 @@ dhgr_load_stream_byte:
     txa
     and #$01
     bne @load_main
-    sta $C003           ; RAMRD -> auxiliary
+    lda #BANK_SWITCH_COMMON_RAMRD
+    jsr bank_switch_common_set
     lda (DHGR_PTR_LO),y
-    sta $C002           ; RAMRD -> main
+    lda #BANK_SWITCH_COMMON_RAMRD
+    jsr bank_switch_common_reset
     rts
 @load_main:
-    sta $C002           ; RAMRD -> main
+    lda #BANK_SWITCH_COMMON_RAMRD
+    jsr bank_switch_common_reset
     lda (DHGR_PTR_LO),y
     rts
 
@@ -172,13 +198,16 @@ dhgr_store_stream_byte:
     txa
     and #$01
     bne @store_main
-    sta $C005           ; RAMWRT -> auxiliary
+    lda #BANK_SWITCH_COMMON_RAMWRT
+    jsr bank_switch_common_set
     pla
     sta (DHGR_PTR_LO),y
-    sta $C004           ; RAMWRT -> main
+    lda #BANK_SWITCH_COMMON_RAMWRT
+    jsr bank_switch_common_reset
     rts
 @store_main:
-    sta $C004           ; RAMWRT -> main
+    lda #BANK_SWITCH_COMMON_RAMWRT
+    jsr bank_switch_common_reset
     pla
     sta (DHGR_PTR_LO),y
     rts

@@ -10,28 +10,16 @@
 reset:
     jsr ensure_g65sc02_or_beep_loop
     jsr softswitch_reset_optimal
-    lda #BANK_SWITCH_EXT_RESET_STATE
-    jsr bank_switch_apply_extended_state
-    lda #BANK_SWITCH_COMMON_RESET_STATE
-    jsr bank_switch_apply_common_state
-    lda #DISPLAY_RESET_STATE
-    jsr display_apply_state
     lda #DISPLAY_ALTCHARSET
     jsr display_set
     lda #INVFLG_RESET_STATE
     sta INVFLG
-    jsr display_text_home
-    ; Fill text page 1 + page 2 with spaces.
-    bit INVFLG
-    bpl @inverse_spaces
-    lda #' ' | $80
-    bra @fill_text_pages
-@inverse_spaces:
-    lda #' '
-@fill_text_pages:
-    jsr display_text_fill_pages
     ; Fill all writable main RAM except text pages with NUL.
     lda #$00
     jsr clear_ram_unrolled_fast
+    ; Clear the currently visible text screen through the shared display helper
+    ; so startup uses the same path as the rest of the ROM.
+    jsr display_text_clear_visible
+    jsr display_text_home
     ; Startup chirp.
     jsr babeep
