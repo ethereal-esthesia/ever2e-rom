@@ -184,6 +184,8 @@ This repo is wired for a fast `ca65/ld65` loop targeting Apple IIe 16KB ROM imag
 - Low byte: 8-bit maximal-period xorshift sequence
 - Seed entry:
   - `rng_seed_ax`: caller provides a 16-bit seed with `A = low`, `X = high`
+  - `rng_seed_from_vbl`: counts a 16-bit loop until `$C019` VBL flips from its
+    starting state, then seeds through `rng_seed_ax`
   - `rng_seed_weyl_a`: compatibility wrapper with `X = 0`
   - `rng_seed_default`: uses 16-bit seed `0000`
 - Seeding rule:
