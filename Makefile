@@ -117,6 +117,7 @@ p6-roms: | $(ROM_DIR)
 	python3 scripts/build_diskii_p6_custom.py \
 		--out "$(ROM_DIR)/DISKII_P6_CUSTOM.rom" \
 		--boot-test-out "$(ROM_DIR)/DISKII_P6_BOOT_TEST.nib" \
+		--custom-stream-out "$(ROM_DIR)/DISKII_P6_CUSTOM_STREAM.rom" \
 		--stock-out "$(ROM_DIR)/DISKII_P6_STOCK.rom"
 
 # Fast local guardrail.

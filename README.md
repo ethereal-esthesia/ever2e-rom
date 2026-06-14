@@ -6,6 +6,7 @@ This repo is expected to produce multiple Apple IIe ROM variants over time:
 - a monitor injection ROM
 - an OS ROM
 - additional test ROMs
+- a 256-byte Disk II P6 substitute ROM (`make p6-roms`)
 
 ## 1. Target
 - Machine: Apple IIe Platinum-compatible

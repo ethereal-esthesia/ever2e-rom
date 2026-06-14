@@ -5,15 +5,18 @@ from __future__ import annotations
 
 import importlib.util
 import itertools
+import os
 import sys
 from pathlib import Path
 
 
 ROM_BASE = 0xC600
 CUSTOM_ROM = Path("ROMS/DISKII_P6_CUSTOM.rom")
+CUSTOM_STREAM_ROM = Path("ROMS/DISKII_P6_CUSTOM_STREAM.rom")
 CUSTOM_BOOT_NIB = Path("ROMS/DISKII_P6_BOOT_TEST.nib")
 EXPECTED_SIZE = 0x100
-EXPECTED_BOOT_ENTRY_PREFIX = [0xA2, 0x20, 0xA0, 0x00, 0xA2, 0x03, 0x86, 0x3C, 0xA2, 0x60]
+EXPECTED_BOOT_ENTRY_PREFIX = [0xA2, 0x20, 0xA0, 0x00, 0xA2, 0x03, 0x86, 0x3C, 0x8A, 0x0A]
+EXECUTABLE_PREFIX_LEN = 0xFB
 
 PINNED_BYTES = {
     0x01: 0x20,
@@ -42,6 +45,10 @@ def load_rom() -> bytes:
     return CUSTOM_ROM.read_bytes()
 
 
+def load_custom_stream_rom() -> bytes:
+    return CUSTOM_STREAM_ROM.read_bytes()
+
+
 def load_boot_nib() -> bytes:
     return CUSTOM_BOOT_NIB.read_bytes()
 
@@ -63,6 +70,20 @@ def assert_boot_entry(rom: bytes) -> None:
             f"expected {[f'${v:02X}' for v in EXPECTED_BOOT_ENTRY_PREFIX]}, "
             f"got {[f'${v:02X}' for v in got]}"
         )
+
+
+def assert_not_local_stock_clone_if_available(rom: bytes) -> None:
+    stock_env = os.environ.get("STOCK_P6_ROM", "")
+    candidates = [Path(stock_env)] if stock_env else []
+    candidates.append(Path("/Users/shane/Project/ever2e-cpp/release/unused/SLOT6.PROM"))
+    stock_path = next((path for path in candidates if path.exists()), None)
+    if stock_path is None:
+        return
+    stock = stock_path.read_bytes()
+    if len(stock) != EXPECTED_SIZE:
+        raise AssertionError(f"stock P6 ROM must be 256 bytes: {stock_path}")
+    if rom[:EXECUTABLE_PREFIX_LEN] == stock[:EXECUTABLE_PREFIX_LEN]:
+        raise AssertionError("generated P6 ROM executable bytes match local stock PROM")
 
 
 def assert_boot_test_disk(nib: bytes) -> None:
@@ -219,20 +240,22 @@ def assert_custom_boots(rom: bytes, nib: bytes) -> None:
         raise AssertionError("P6 loader did not copy the generated payload exactly")
 
 
-def verify(rom: bytes, nib: bytes) -> None:
+def verify(rom: bytes, custom_stream_rom: bytes, nib: bytes) -> None:
     assert_pinned_bytes(rom)
     assert_boot_entry(rom)
+    assert_not_local_stock_clone_if_available(rom)
     assert_boot_test_disk(nib)
-    assert_custom_boots(rom, nib)
+    assert_custom_boots(custom_stream_rom, nib)
 
 
 def main() -> None:
     rom = load_rom()
+    custom_stream_rom = load_custom_stream_rom()
     nib = load_boot_nib()
-    verify(rom, nib)
-    print("PASS: clean Disk II P6 substitute ROM verified")
-    print("  custom boot disk: generated NIB stream loads payload to $0800")
-    print("  payload result: $0400=$42, $0401=$C8, PC=$080A")
+    verify(rom, custom_stream_rom, nib)
+    print("PASS: Disk II P6 substitute ROM verified")
+    print("  standard ROM: local stock PROM clone guard passes when present")
+    print("  custom stream fixture: generated NIB stream loads payload to $0800")
 
 
 if __name__ == "__main__":
