@@ -9,7 +9,7 @@ SWITCH_TEST_PROFILE := $(ROOT)profiles/Apple2eBankSwitchChecksumTestNoSlots.emu
 RNG_SEQUENCE_TEST_PROFILE := $(ROOT)profiles/Apple2eRngSequenceTestNoSlots.emu
 JVM_DIR ?= /Users/shane/Project/ever2e-jvm
 JVM_P6_TEST_FILTER ?= test.cpu.Cpu65c02CycleTimingTest
-JVM_P6_DISK_FILTER ?= test.device.DiskIISlotRomSignatureTest
+JVM_P6_DISK_FILTER ?= test.peripherals.drive.floppy525.Floppy525ControllerTest
 PY_DIR ?= $(ROOT)testing/ever2e-py
 P6_PY_STRICT ?= 0
 P6_PY_REPORT ?= /tmp/p6_py_output_report.json
@@ -139,7 +139,7 @@ test-p6-py:
 
 # Authoritative gate: JVM regression suite.
 test-p6-jvm:
-	cd $(JVM_DIR) && if [ -n "$(JVM_P6_DISK_FILTER)" ] && [ -f src/test/device/DiskIISlotRomSignatureTest.java ]; then \
+	cd $(JVM_DIR) && if [ -n "$(JVM_P6_DISK_FILTER)" ]; then \
 		./gradlew test --tests $(JVM_P6_TEST_FILTER) --tests $(JVM_P6_DISK_FILTER); \
 	else \
 		./gradlew test --tests $(JVM_P6_TEST_FILTER); \

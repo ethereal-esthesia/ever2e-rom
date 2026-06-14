@@ -1,30 +1,45 @@
 #!/usr/bin/env python3
 """
-Build a Disk II P6-compatible 256-byte ROM artifact while preserving
-ProDOS-visible signature bytes.
+Build a clean-room Disk II P6 substitute ROM for low-level slot/controller tests.
 
-This starts from a known-good stock image and enforces invariants so we can
-iterate safely on internal bytes later.
+This image is intentionally not a functional Disk II boot ROM yet. It preserves
+the common 16-sector identification bytes used by existing slot-ROM plumbing,
+then falls into an inert self-loop. The JVM low-level disk write test exercises
+controller soft switches directly and does not execute this ROM.
 """
 
-from pathlib import Path
+from __future__ import annotations
+
 import argparse
+from pathlib import Path
 
 
-# Known-good 16-sector Disk II P6 ROM image (256 bytes).
-STOCK_HEX = (
-    "A220A000A203863C8A0A243CF010053C49FF297EB0084AD0FB989D5603C8E810"
-    "E52058FFBABD00010A0A0A0A852BAABD8EC0BD8CC0BD8AC0BD89C0A050BD80C0"
-    "9829030A052BAABD81C0A95620A8FC8810EB8526853D8541A90885271808BD8C"
-    "C010FB49D5D0F7BD8CC010FBC9AAD0F3EABD8CC010FBC996F0092890DF49ADF0"
-    "25D0D9A0038540BD8CC010FB2A853CBD8CC010FB253C88D0EC28C53DD0BEA540"
-    "C541D0B8B0B7A056843CBC8CC010FB59D602A43C88990003D0EE843CBC8CC010"
-    "FB59D602A43C9126C8D0EFBC8CC010FB59D602D087A000A256CA30FBB1265E00"
-    "032A5E00032A9126C8D0EEE627E63DA53DCD0008A62B90DB4C01080000000000"
+ROM_SIZE = 0x100
+ROM_LABEL = b"EVER2E P6 TEST ROM"
+
+# A tiny, original boot-entry stub:
+#   C600: LDX #$20
+#   C602: LDY #$00
+#   C604: LDX #$03
+#   C606: STX $3C
+#   C608: JMP $C608
+BOOT_ENTRY = bytes(
+    [
+        0xA2,
+        0x20,
+        0xA0,
+        0x00,
+        0xA2,
+        0x03,
+        0x86,
+        0x3C,
+        0x4C,
+        0x08,
+        0xC6,
+    ]
 )
 
-# Compatibility signature bytes for broad Disk II/ProDOS detection.
-# We pin these bytes regardless of any future internal edits.
+# Compatibility signature bytes used by broad Disk II/ProDOS detection.
 COMPAT_SIGNATURE = {
     0x01: 0x20,
     0x03: 0x00,
@@ -35,11 +50,13 @@ COMPAT_SIGNATURE = {
 
 
 def build_bytes() -> bytearray:
-    data = bytearray.fromhex(STOCK_HEX)
-    if len(data) != 256:
-        raise ValueError(f"Expected 256-byte ROM, got {len(data)}")
+    data = bytearray([0xEA] * ROM_SIZE)
+    data[0 : len(BOOT_ENTRY)] = BOOT_ENTRY
+    data[0x10 : 0x10 + len(ROM_LABEL)] = ROM_LABEL
     for off, val in COMPAT_SIGNATURE.items():
         data[off] = val
+    if len(data) != ROM_SIZE:
+        raise ValueError(f"Expected 256-byte ROM, got {len(data)}")
     return data
 
 
@@ -52,8 +69,8 @@ def main() -> None:
     )
     parser.add_argument(
         "--stock-out",
-        default="ROMS/DISKII_P6_STOCK.rom",
-        help="Optional stock ROM output path",
+        default=None,
+        help="Deprecated; removed if present so stale stock artifacts do not linger",
     )
     args = parser.parse_args()
 
@@ -62,12 +79,12 @@ def main() -> None:
     out_path.parent.mkdir(parents=True, exist_ok=True)
     out_path.write_bytes(custom)
 
-    stock_path = Path(args.stock_out)
-    stock_path.parent.mkdir(parents=True, exist_ok=True)
-    stock_path.write_bytes(bytearray.fromhex(STOCK_HEX))
+    if args.stock_out:
+        stock_path = Path(args.stock_out)
+        if stock_path.exists():
+            stock_path.unlink()
 
     print(f"Wrote {out_path} ({len(custom)} bytes)")
-    print(f"Wrote {stock_path} (256 bytes)")
     print(
         "Pinned signature bytes:",
         ", ".join(f"${k:02X}=${v:02X}" for k, v in COMPAT_SIGNATURE.items()),

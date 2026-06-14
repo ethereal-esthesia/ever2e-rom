@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Regression test for Disk II P6 useful entry points and cycle timing."""
+"""Regression test for the clean Disk II P6 substitute ROM."""
 
 from __future__ import annotations
 
@@ -27,23 +27,19 @@ class TestDiskIIP6EntryPoints(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
         cls.mod = _load_verify_module()
-        cls.stock, cls.custom = cls.mod.load_rom_pair()
+        cls.rom = cls.mod.load_rom()
 
-    def test_entry_point_signatures_are_pinned(self):
-        self.mod.assert_entry_point_signatures(self.stock, "stock")
-        self.mod.assert_entry_point_signatures(self.custom, "custom")
+    def test_boot_entry_is_pinned(self):
+        self.mod.assert_boot_entry(self.rom)
 
     def test_signature_bytes_are_pinned(self):
-        self.mod.assert_pinned_bytes(self.stock, "stock")
-        self.mod.assert_pinned_bytes(self.custom, "custom")
+        self.mod.assert_pinned_bytes(self.rom)
 
-    def test_cycle_baselines_and_custom_parity(self):
-        results = self.mod.measure_cycles(self.stock, self.custom)
-        self.mod.assert_cycles(results)
+    def test_label_identifies_generated_substitute(self):
+        self.mod.assert_label(self.rom)
 
-    def test_verify_covers_all_useful_entry_points(self):
-        # Guardrail: keep coverage broad if we add/remove useful entry points.
-        self.assertGreaterEqual(len(self.mod.ENTRY_POINT_SIGNATURES), 7)
+    def test_boot_entry_self_loops_without_disk_io(self):
+        self.mod.assert_boot_entry_is_inert(self.rom)
 
 
 if __name__ == "__main__":
