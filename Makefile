@@ -116,6 +116,7 @@ run-rng-sequence-test: build-rng-sequence-test
 p6-roms: | $(ROM_DIR)
 	python3 scripts/build_diskii_p6_custom.py \
 		--out "$(ROM_DIR)/DISKII_P6_CUSTOM.rom" \
+		--boot-test-out "$(ROM_DIR)/DISKII_P6_BOOT_TEST.nib" \
 		--stock-out "$(ROM_DIR)/DISKII_P6_STOCK.rom"
 
 # Fast local guardrail.

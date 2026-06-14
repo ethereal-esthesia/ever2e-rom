@@ -28,6 +28,7 @@ class TestDiskIIP6EntryPoints(unittest.TestCase):
     def setUpClass(cls):
         cls.mod = _load_verify_module()
         cls.rom = cls.mod.load_rom()
+        cls.nib = cls.mod.load_boot_nib()
 
     def test_boot_entry_is_pinned(self):
         self.mod.assert_boot_entry(self.rom)
@@ -35,11 +36,11 @@ class TestDiskIIP6EntryPoints(unittest.TestCase):
     def test_signature_bytes_are_pinned(self):
         self.mod.assert_pinned_bytes(self.rom)
 
-    def test_label_identifies_generated_substitute(self):
-        self.mod.assert_label(self.rom)
+    def test_generated_boot_disk_has_expected_payload(self):
+        self.mod.assert_boot_test_disk(self.nib)
 
-    def test_boot_entry_self_loops_without_disk_io(self):
-        self.mod.assert_boot_entry_is_inert(self.rom)
+    def test_custom_boot_loads_generated_payload(self):
+        self.mod.assert_custom_boots(self.rom, self.nib)
 
 
 if __name__ == "__main__":
