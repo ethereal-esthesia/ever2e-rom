@@ -28,7 +28,7 @@ class TestDiskIIP6EntryPoints(unittest.TestCase):
     def setUpClass(cls):
         cls.mod = _load_verify_module()
         cls.rom = cls.mod.load_rom()
-        cls.custom_stream_rom = cls.mod.load_custom_stream_rom()
+        cls.boot_test_rom = cls.mod.load_boot_test_rom()
         cls.nib = cls.mod.load_boot_nib()
 
     def test_boot_entry_is_pinned(self):
@@ -44,7 +44,7 @@ class TestDiskIIP6EntryPoints(unittest.TestCase):
         self.mod.assert_boot_test_disk(self.nib)
 
     def test_custom_stream_boot_loads_generated_payload(self):
-        self.mod.assert_custom_boots(self.custom_stream_rom, self.nib)
+        self.mod.assert_custom_boots(self.boot_test_rom, self.nib)
 
 
 if __name__ == "__main__":

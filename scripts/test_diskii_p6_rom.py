@@ -12,7 +12,7 @@ from pathlib import Path
 
 ROM_BASE = 0xC600
 CUSTOM_ROM = Path("ROMS/DISKII_P6_CUSTOM.rom")
-CUSTOM_STREAM_ROM = Path("ROMS/DISKII_P6_CUSTOM_STREAM.rom")
+BOOT_TEST_ROM = Path("ROMS/DISKII_P6_BOOT_TEST.rom")
 CUSTOM_BOOT_NIB = Path("ROMS/DISKII_P6_BOOT_TEST.nib")
 EXPECTED_SIZE = 0x100
 EXPECTED_BOOT_ENTRY_PREFIX = [0xA2, 0x20, 0xA0, 0x00, 0xA2, 0x03, 0x86, 0x3C, 0x8A, 0x0A]
@@ -45,8 +45,8 @@ def load_rom() -> bytes:
     return CUSTOM_ROM.read_bytes()
 
 
-def load_custom_stream_rom() -> bytes:
-    return CUSTOM_STREAM_ROM.read_bytes()
+def load_boot_test_rom() -> bytes:
+    return BOOT_TEST_ROM.read_bytes()
 
 
 def load_boot_nib() -> bytes:
@@ -75,7 +75,6 @@ def assert_boot_entry(rom: bytes) -> None:
 def assert_not_local_stock_clone_if_available(rom: bytes) -> None:
     stock_env = os.environ.get("STOCK_P6_ROM", "")
     candidates = [Path(stock_env)] if stock_env else []
-    candidates.append(Path("/Users/shane/Project/ever2e-cpp/release/unused/SLOT6.PROM"))
     stock_path = next((path for path in candidates if path.exists()), None)
     if stock_path is None:
         return
@@ -250,7 +249,7 @@ def verify(rom: bytes, custom_stream_rom: bytes, nib: bytes) -> None:
 
 def main() -> None:
     rom = load_rom()
-    custom_stream_rom = load_custom_stream_rom()
+    custom_stream_rom = load_boot_test_rom()
     nib = load_boot_nib()
     verify(rom, custom_stream_rom, nib)
     print("PASS: Disk II P6 substitute ROM verified")

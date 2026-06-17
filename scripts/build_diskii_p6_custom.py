@@ -422,8 +422,8 @@ def main() -> None:
     )
     parser.add_argument(
         "--custom-stream-out",
-        default="ROMS/DISKII_P6_CUSTOM_STREAM.rom",
-        help="Output legacy custom stream ROM path",
+        default="ROMS/DISKII_P6_BOOT_TEST.rom",
+        help="Output boot-test ROM path for the generated custom stream NIB",
     )
     parser.add_argument(
         "--stock-out",

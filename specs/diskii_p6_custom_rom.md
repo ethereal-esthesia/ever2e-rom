@@ -16,7 +16,7 @@ synthetic test disk.
 Generated local artifacts:
 
 - `ROMS/DISKII_P6_CUSTOM.rom`
-- `ROMS/DISKII_P6_CUSTOM_STREAM.rom`
+- `ROMS/DISKII_P6_BOOT_TEST.rom`
 - `ROMS/DISKII_P6_BOOT_TEST.nib`
 
 `ROMS/` is a generated build-output folder and is ignored by git.
@@ -51,7 +51,7 @@ Compatibility signature bytes:
 ## Custom Stream Boot-Test Disk
 
 `ROMS/DISKII_P6_BOOT_TEST.nib` is a generated 35-track NIB image for
-`ROMS/DISKII_P6_CUSTOM_STREAM.rom`. The stream is placed on track 34 because
+`ROMS/DISKII_P6_BOOT_TEST.rom`. The stream is placed on track 34 because
 the current JVM and C++ Disk II controllers initialize the head at track 34.
 
 Track 34 layout:
